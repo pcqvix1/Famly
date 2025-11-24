@@ -1,0 +1,190 @@
+/* ========================================================= */
+/* Documentação: style.css (Versão 3.0 - Funcionalidades Avançadas) */
+/* ========================================================= */
+
+/* ------------------ 1. ANIMAÇÕES (Keyframes) ------------------ */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ------------------ 2. ESTILOS GERAIS ------------------ */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f0f2f5;
+    color: #050505;
+    margin: 0; padding: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ------------------ 3. LAYOUT GERAL DO CHAT ------------------ */
+#auth-container {
+    animation: fadeIn 0.8s ease-out;
+    max-width: 400px; width: 90%;
+    margin: auto; border-radius: 12px;
+}
+#error-message { font-weight: 500; color: #dc3545; text-align: center; }
+#chat-header {
+    background: #ffffff; color: #050505;
+    padding: 1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    z-index: 10; border-bottom: 1px solid #ddd;
+}
+#chat-window {
+    background-color: #f0f2f5;
+    display: flex; flex-direction: column;
+    padding: 1rem;
+}
+
+/* Formulário de Envio */
+#message-form {
+    padding: 0.75rem 1rem;
+    background-color: #ffffff;
+    border-top: 1px solid #ddd;
+}
+#message-input {
+    border-radius: 20px !important;
+    background-color: #f0f2f5;
+    border: 1px solid #f0f2f5;
+    transition: all 0.2s ease;
+}
+#message-input:focus {
+    background-color: #ffffff;
+    border: 1px solid #0d6efd;
+    box-shadow: none;
+}
+#message-form .btn {
+    flex-shrink: 0; width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+}
+#message-form .btn-light i { color: #555; }
+
+/* ----------------------------------------------------- */
+/* 4. BALÕES DE CHAT (Com Vistos e Respostas)            */
+/* ----------------------------------------------------- */
+.message {
+    max-width: 70%;
+    margin-bottom: 12px;
+    padding: 10px 15px;
+    border-radius: 18px;
+    line-height: 1.4;
+    position: relative;
+    word-break: break-word;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+    animation: slideInUp 0.3s ease-out;
+}
+.message.sent {
+    background-color: #dcf8c6;
+    align-self: flex-end;
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+}
+.message.received {
+    background-color: #ffffff;
+    border: 1px solid #eee;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+.message .sender {
+    font-size: 0.75em;
+    font-weight: bold;
+    color: #0d6efd;
+    margin-bottom: 4px;
+    display: block;
+}
+
+/* NOVO: Estilos para "Responder a" (Quote) */
+.message .quoted-message {
+    background-color: rgba(0, 0, 0, 0.05);
+    border-left: 3px solid #0d6efd;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+.message .quoted-message .quoted-sender {
+    font-weight: 600;
+    color: #0b5ed7;
+}
+.message .quoted-message .quoted-text {
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+/* NOVO: Estilos para "Vistos de Leitura" */
+.message .read-receipt {
+    font-size: 1.1em; /* Tamanho do ícone do visto */
+    margin-left: 5px;
+    color: #666; /* Cinza para "enviado" */
+    float: right; /* Flutua o visto para a direita do balão */
+    margin-top: 4px; /* Alinha com a última linha de texto */
+}
+.message .read-receipt.read {
+    color: #0d6efd; /* Azul para "lido" */
+}
+
+
+/* Mídia (Imagens, Vídeos, Áudio) */
+.message img,
+.message video {
+    max-width: 100%; height: auto;
+    border-radius: 8px; margin-top: 5px;
+}
+
+.audio-player-wrapper {
+    min-width: 200px; /* Garante que haja espaço mínimo para o player */
+    max-width: 100%;
+    margin: 5px 0;
+}
+
+.message audio {
+    display: block; /* Garante que o áudio ocupa a própria linha */
+    width: 100%;    /* Usa 100% da largura do wrapper */
+    min-height: 40px; /* Garante que o controlo do player seja visível */
+    background-color: #f1f3f4; /* Cor de fundo para melhor contraste */
+    border-radius: 8px;
+    padding: 2px;
+}
+
+
+/* ------------------------------------------- */
+/* 6. NOVOS ESTILOS (A Escrever / Responder)   */
+/* ------------------------------------------- */
+
+/* Indicador "A Escrever..." */
+#typing-indicator {
+    background-color: #f0f2f5;
+    padding: 0 1rem;
+    height: 30px; /* Altura fixa para não "saltar" */
+    display: flex;
+    align-items: center;
+}
+/* Animação de "pontinhos" */
+#typing-indicator span {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background-color: #888;
+    margin: 0 1px;
+    animation: typing-bounce 1.4s infinite;
+}
+#typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+#typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1.0); }
+}
+
+/* Barra de "Responder a" */
+#reply-preview {
+    background-color: #f8f9fa;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+}

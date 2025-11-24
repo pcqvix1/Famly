@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+        body { height: 100vh; overflow: hidden; }
+        #main-container { height: 100vh; display: flex; }
+        #conversation-list-col {
+            border-right: 1px solid #ddd;
+            background-color: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        #conversation-list { overflow-y: auto; flex-grow: 1; }
+        #chat-main-col {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        #chat-window { flex-grow: 1; overflow-y: auto; }
+
+        @media (max-width: 991.98px) {
+            #conversation-list-col, #chat-main-col {
+                width: 100%;
+                max-width: 100%;
+            }
+            #conversation-list-col { border-right: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-container">
+
+        <div id="conversation-list-col" class="col-12 col-lg-3">
+
+            <div id="chat-header" class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                <h2 class="h5 m-0 text-primary">Conversas</h2>
+                <div class="btn-group">
+                    <button id="btn-profile" class="btn btn-sm btn-outline-secondary" title="Perfil">
+                        <i class="bi bi-person-circle"></i>
+                    </button>
+                    <button id="btn-add-contact" class="btn btn-sm btn-outline-primary" title="Adicionar Contacto">
+                        <i class="bi bi-person-plus-fill"></i>
+                    </button>
+                    <button id="btn-create-group" class="btn btn-sm btn-outline-primary" title="Criar Grupo">
+                        <i class="bi bi-people-fill"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="conversation-list" class="list-group list-group-flush">
+                <p class="text-center p-3 text-muted">A carregar...</p>
+            </div>
+
+            <div class="p-3 border-top d-none d-lg-block">
+                 <button id="btn-logout-pc" class="btn btn-danger w-100">Sair</button>
+            </div>
+        </div>
+
+        <div id="chat-main-col" class="col-12 col-lg-9">
+
+            <div id="chat-header" class="bg-primary text-white p-3 d-flex justify-content-between align-items-center">
+                <button id="btn-back-mobile" class="btn btn-light me-3 d-lg-none" title="Voltar">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
+
+                <h2 id="current-chat-name" class="h5 m-0 flex-grow-1">Selecione uma Conversa</h2>
+
+                <button id="btn-logout-mobile" class="btn btn-danger btn-sm d-lg-none" title="Sair">
+                    <i class="bi bi-box-arrow-right"></i>
+                </button>
+            </div>
+
+            <div id="chat-window" class="p-3">
+                </div>
+
+            <div id="typing-indicator" class="p-2 text-muted small d-none">
+                A carregar...
+            </div>
+
+            <div id="reply-preview" class="p-2 border-top bg-light d-flex align-items-center justify-content-between d-none">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-reply-fill fs-5 me-2 text-primary"></i>
+                    <div style="font-size: 0.9em;">
+                        <strong class="text-primary">A responder a:</strong>
+                        <div id="reply-preview-text" class="text-muted small" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;"></div>
+                    </div>
+                </div>
+                <button type="button" id="btn-cancel-reply" class="btn btn-sm btn-outline-danger">X</button>
+            </div>
+
+            <div id="attachment-preview" class="p-2 border-top bg-light d-flex align-items-center justify-content-between d-none">
+                <div id="preview-content" class="d-flex align-items-center"></div>
+                <button type="button" id="btn-remove-attachment" class="btn btn-sm btn-outline-danger">X</button>
+            </div>
+
+            <form id="message-form" class="d-flex align-items-center p-2 border-top bg-white">
+
+                <label for="file-upload" class="btn btn-light rounded-circle p-2 me-2" title="Anexar Arquivo" style="cursor: pointer;">
+                    <i class="bi bi-paperclip fs-5 lh-1"></i>
+                </label>
+                <input type="file" id="file-upload" style="display: none;" accept="*/*" multiple>
+
+                <button type="button" id="btn-record-audio" class="btn btn-light rounded-circle p-2 me-2" title="Gravar Áudio">
+                    <i class="bi bi-mic-fill fs-5 lh-1"></i>
+                </button>
+
+                <input type="text" id="message-input" class="form-control" placeholder="Escreva sua mensagem..." autocomplete="off">
+
+                <button type="submit" class="btn btn-primary rounded-circle p-2 ms-2" title="Enviar">
+                     <i class="bi bi-send-fill fs-5 lh-1"></i>
+                </button>
+            </form>
+
+        </div>
+    </div>
+
+    <div class="modal fade" id="messageOptionsMenu" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">Opções de Mensagem</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <button id="btn-reply-message" class="btn btn-outline-secondary w-100 mb-2"><i class="bi bi-reply-fill me-2"></i> Responder</button>
+            <button id="btn-edit-message" class="btn btn-outline-primary w-100 mb-2"><i class="bi bi-pencil-fill me-2"></i> Editar</button>
+            <button id="btn-forward-message" class="btn btn-outline-info w-100 mb-2"><i class="bi bi-arrow-right-circle-fill me-2"></i> Encaminhar</button>
+            <button id="btn-delete-message" class="btn btn-outline-danger w-100"><i class="bi bi-trash-fill me-2"></i> Excluir</button>
+          </div>
+        </div>
+      </div>
+
+    <div class="modal fade" id="profileModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Meu Perfil</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img id="profile-img-preview" src="https://via.placeholder.com/150" class="rounded-circle mb-3" width="150" height="150">
+                    <input type="file" id="profile-img-upload" class="form-control mb-3" accept="image/*">
+                    <input type="text" id="profile-name-input" class="form-control" placeholder="Seu nome">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" id="btn-save-profile" class="btn btn-primary">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="forwardMessageModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Encaminhar Mensagem Para...</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="forward-conversation-list" class="list-group list-group-flush">
+              </div>
+            <div id="forward-error" class="text-danger small mt-2 d-none"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" id="btn-confirm-forward" class="btn btn-primary">Encaminhar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <div class="modal fade" id="editMessageModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">Editar Mensagem</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <textarea id="edit-message-text" class="form-control" rows="3"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" id="btn-save-edit" class="btn btn-primary">Salvar Edição</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="addContactModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">Adicionar Novo Contacto</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="add-contact-email" class="form-label">Email do Contacto:</label>
+              <input type="email" class="form-control" id="add-contact-email" placeholder="exemplo@email.com">
+              <div id="add-contact-error" class="text-danger small mt-2 d-none"></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" id="btn-confirm-add-contact" class="btn btn-primary">Adicionar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="createGroupModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">Criar Novo Grupo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="create-group-name" class="form-label">Nome do Grupo:</label>
+              <input type="text" class="form-control" id="create-group-name" placeholder="Ex: Família Silva">
+            </div>
+            <hr>
+            <h6>Adicionar Membros:</h6>
+            <div id="create-group-contacts-list" class="list-group list-group-flush"></div>
+            <div id="create-group-error" class="text-danger small mt-2 d-none"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" id="btn-confirm-create-group" class="btn btn-primary">Criar Grupo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
