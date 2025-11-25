@@ -18,14 +18,14 @@ const auth = firebase.auth();
 const db = firebase.firestore();
 
 // Inicializa messaging de forma segura.
-const messaging = firebase.messaging ? firebase.messaging() : null; 
+const messaging = firebase.messaging ? firebase.messaging() : null;
 
 // ===================================================================
 // CONFIGURAÇÃO DO CLOUDINARY (PARA ANEXOS SEM FIREBASE STORAGE)
 // ⚠️ SUBSTITUA COM SUAS CREDENCIAIS ⚠️
 // ===================================================================
-const CLOUDINARY_CLOUD_NAME = "dqn28emva"; 
-const CLOUDINARY_UPLOAD_PRESET = "famly_chat"; 
+const CLOUDINARY_CLOUD_NAME = "dqn28emva";
+const CLOUDINARY_UPLOAD_PRESET = "famly_chat";
 
 // Função auxiliar para obter o tipo de recurso para o Cloudinary
 function getResourceType(fileType) {
@@ -78,7 +78,7 @@ if (btnLogin) {
         auth.createUserWithEmailAndPassword(email, password)
             .then((userCredential) => {
                 const user = userCredential.user;
-                
+
                 return user.updateProfile({ displayName: name })
                     .then(() => user);
             })
@@ -87,6 +87,7 @@ if (btnLogin) {
                     name: user.displayName || user.email.split('@')[0],
                     email: user.email,
                     contacts: [],
+                    blockedUsers: [],
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
             })
@@ -106,7 +107,7 @@ if (btnLogin) {
 const currentPage = window.location.pathname;
 
 if (currentPage.includes("chat.html")) {
-    
+
     // --- ELEMENTOS HTML ---
     const conversationListCol = document.getElementById("conversation-list-col");
     const conversationList = document.getElementById("conversation-list");
@@ -122,7 +123,8 @@ if (currentPage.includes("chat.html")) {
     const btnBackMobile = document.getElementById("btn-back-mobile");
     const btnLogoutMobile = document.getElementById("btn-logout-mobile");
     const btnRecordAudio = document.getElementById("btn-record-audio");
-    
+    const searchInput = document.getElementById("search-input");
+
     // ELEMENTOS DE PRÉ-VISUALIZAÇÃO
     const attachmentPreview = document.getElementById("attachment-preview");
     const previewContent = document.getElementById("preview-content");
@@ -132,28 +134,39 @@ if (currentPage.includes("chat.html")) {
     const messageOptionsMenu = new bootstrap.Modal(document.getElementById('messageOptionsMenu'));
     const btnEditMessage = document.getElementById("btn-edit-message");
     const btnDeleteMessage = document.getElementById("btn-delete-message");
-    
+    const btnForwardMessage = document.getElementById("btn-forward-message");
+
     const editMessageModal = new bootstrap.Modal(document.getElementById('editMessageModal'));
     const editMessageTextarea = document.getElementById("edit-message-text");
     const btnSaveEdit = document.getElementById("btn-save-edit");
+    const accountModal = new bootstrap.Modal(document.getElementById('accountModal'));
+    const btnAccount = document.getElementById("btn-account");
+    const accountNameInput = document.getElementById("account-name");
+    const accountEmailInput = document.getElementById("account-email");
+    const accountPasswordInput = document.getElementById("account-password");
+    const accountPasswordConfirmInput = document.getElementById("account-password-confirm");
+    const btnSaveAccount = document.getElementById("btn-save-account");
+    const forwardMessageModal = new bootstrap.Modal(document.getElementById('forwardMessageModal'));
+    const forwardContactsList = document.getElementById("forward-contacts-list");
+    const btnBlockUser = document.getElementById("btn-block-user");
 
 
     // --- ESTADO DA APLICAÇÃO ---
     let currentUser = null;
-    let currentChatPartnerEmail = null; 
-    let currentChatId = null; 
+    let currentChatPartnerEmail = null;
+    let currentChatId = null;
     let unsubscribeFromMessages = null;
-    let mediaRecorder; 
-    let audioChunks = []; 
-    let audioStream = null; 
-    
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioStream = null;
+
     // VARIÁVEIS DE ESTADO PARA ANEXOS/ÁUDIO
-    let attachmentFile = null;      
-    let attachmentType = null;      
+    let attachmentFile = null;
+    let attachmentType = null;
 
     // VARIÁVEIS DE ESTADO PARA EDIÇÃO/EXCLUSÃO
-    let selectedMessageDocRef = null; 
-    let selectedMessageText = "";     
+    let selectedMessageDocRef = null;
+    let selectedMessageText = "";
 
 
     // ===========================================
@@ -176,20 +189,29 @@ if (currentPage.includes("chat.html")) {
             chatMainCol.classList.add("d-none");
         }
     }
-    
+
     function requestNotificationPermission() {
-        if (!("Notification" in window)) return;
-        Notification.requestPermission();
+        if (!("Notification" in window)) {
+            alert("This browser does not support desktop notification");
+        } else if (Notification.permission === "granted") {
+            return;
+        } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(function (permission) {
+                if (permission === "granted") {
+                    console.log("Notification permission granted.");
+                }
+            });
+        }
     }
-    
+
     // Funções para gerir o estado da pré-visualização de anexo
     function displayAttachmentPreview(file, type) {
         attachmentFile = file;
         attachmentType = type;
-        
+
         messageInput.placeholder = "Adicione uma descrição...";
         messageInput.value = "";
-        
+
         let icon = '📎';
         let name = file.name;
 
@@ -210,7 +232,7 @@ if (currentPage.includes("chat.html")) {
                 <div class="text-muted small">${(file.size / 1024).toFixed(0)} KB</div>
             </div>
         `;
-        
+
         attachmentPreview.classList.remove("d-none");
         messageInput.disabled = false;
         btnRecordAudio.textContent = '🎙️';
@@ -227,7 +249,7 @@ if (currentPage.includes("chat.html")) {
         btnRecordAudio.textContent = '🎙️';
         if (audioStream) audioStream.getTracks().forEach(track => track.stop());
     }
-    
+
     // Listener para o botão 'X' de remover anexo
     btnRemoveAttachment.addEventListener('click', clearAttachmentPreview);
 
@@ -239,22 +261,23 @@ if (currentPage.includes("chat.html")) {
     auth.onAuthStateChanged(async (user) => {
         if (user) {
             currentUser = user;
-            
+
             const userDocRef = db.collection("users").doc(currentUser.email);
             const userDoc = await userDocRef.get();
-            
+
             if (!userDoc.exists) {
                 await userDocRef.set({
                     name: currentUser.displayName || currentUser.email.split('@')[0],
                     email: currentUser.email,
                     contacts: [],
+                    blockedUsers: [],
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
             }
-            
+
             loadConversationList();
             requestNotificationPermission();
-            
+
             if (window.innerWidth < 992 && !currentChatId) {
                 chatMainCol.classList.add("d-none");
             }
@@ -263,7 +286,7 @@ if (currentPage.includes("chat.html")) {
             window.location.href = "index.html";
         }
     });
-    
+
     btnBackMobile.addEventListener('click', showConversationList);
     btnLogoutPc.addEventListener("click", () => auth.signOut());
     btnLogoutMobile.addEventListener("click", () => auth.signOut());
@@ -275,7 +298,7 @@ if (currentPage.includes("chat.html")) {
     // Modal Add Contact (simplificado, como no código anterior)
     btnAddContact.addEventListener('click', async () => {
         const emailToAdd = prompt("Digite o email do contato que deseja adicionar:");
-        
+
         if (!emailToAdd || emailToAdd === currentUser.email) return;
 
         const contactDoc = await db.collection("users").doc(emailToAdd).get();
@@ -293,36 +316,36 @@ if (currentPage.includes("chat.html")) {
             alert("Erro ao adicionar contato.");
         }
     });
-    
+
     // Modal Create Group (simplificado, como no código anterior)
     btnCreateGroup.addEventListener('click', async () => {
         const userDoc = await db.collection("users").doc(currentUser.email).get();
         const contacts = userDoc.data().contacts || [];
-        
+
         if (contacts.length === 0) { alert("Adicione contatos primeiro para criar um grupo!"); return; }
-        
+
         let selectedEmails = [currentUser.email];
         let groupName = prompt("Digite o nome do novo grupo:");
-        
+
         if (!groupName) return;
 
         let emailsInput = prompt(`Digite os emails dos contatos (separados por vírgula): \nSeus contatos são: ${contacts.join(', ')}`);
-        
+
         if (emailsInput) {
             const inputList = emailsInput.split(',').map(e => e.trim()).filter(e => e.length > 0);
             selectedEmails.push(...inputList);
         }
-        
+
         selectedEmails = [...new Set(selectedEmails)].filter(email => email.includes('@'));
-        
+
         if (selectedEmails.length < 2) {
             alert("Um grupo precisa de pelo menos 2 membros. Tente novamente.");
             return;
         }
-        
+
         const sortedMembers = selectedEmails.sort();
         const groupId = sortedMembers.join('___');
-        
+
         try {
             await db.collection("groups").doc(groupId).set({
                 name: groupName,
@@ -332,7 +355,7 @@ if (currentPage.includes("chat.html")) {
             });
 
             alert(`O grupo "${groupName}" foi criado!`);
-            startGroupChat(groupId, groupName); 
+            startGroupChat(groupId, groupName);
 
         } catch (e) {
             console.error("Erro ao criar o grupo:", e);
@@ -348,7 +371,7 @@ if (currentPage.includes("chat.html")) {
             item.classList.remove('active');
             item.classList.remove('text-white');
         });
-        
+
         if (currentChatId) {
             const activeItem = document.querySelector(`.chat-item[data-chat-id="${currentChatId}"]`);
             if (activeItem) {
@@ -365,7 +388,7 @@ if (currentPage.includes("chat.html")) {
     async function loadConversationList() {
         // Garante que a mensagem de carregamento apareça ANTES de qualquer dado
         conversationList.innerHTML = '<p class="text-center p-3 text-muted">A carregar conversas...</p>';
-        
+
         // Listener que monitora mudanças no documento do utilizador (principalmente a lista de contatos)
         db.collection("users").doc(currentUser.email)
             .onSnapshot(async (doc) => {
@@ -393,9 +416,9 @@ if (currentPage.includes("chat.html")) {
                     }
                     listHTML += (await Promise.all(contactPromises)).join('');
                 }
-                
+
                 let groupsHTML = '';
-                
+
                 // 2. CARREGAR GRUPOS
                 db.collection("groups").where("members", "array-contains", currentUser.email)
                     .onSnapshot((querySnapshot) => {
@@ -403,19 +426,19 @@ if (currentPage.includes("chat.html")) {
                         querySnapshot.forEach((doc) => {
                             const group = doc.data();
                             const groupId = doc.id;
-                            
+
                             // Adiciona as classes para a função highlightActiveChat
                             groupsHTML += `<a href="#" class="list-group-item list-group-item-action p-3 bg-warning-subtle chat-item" data-chat-id="${groupId}" onclick="startGroupChat('${groupId}', '${group.name}', event)">${group.name} (Grupo)</a>`;
                         });
-                        
+
                         // FIX PRINCIPAL: Substitui o conteúdo da lista com os contatos e grupos carregados
                         conversationList.innerHTML = listHTML + groupsHTML;
-                        
+
                         // Se a lista estiver vazia, exibe a mensagem de 'Adicionar contatos'
                         if (listHTML === '' && groupsHTML === '') {
                              conversationList.innerHTML = '<p class="text-center p-3 text-muted">Adicione contatos 👥 ou crie um grupo 👨‍👩‍👧‍👦</p>';
                         }
-                        
+
                         highlightActiveChat();
 
                     }, (error) => {
@@ -424,36 +447,36 @@ if (currentPage.includes("chat.html")) {
                     });
             });
     }
-    
+
     // Funções de Início de Chat (Atualizadas para chamar highlightActiveChat)
     window.startChatWith = (partnerEmail, partnerName, event) => {
         if (event) event.preventDefault();
-        
+
         if (unsubscribeFromMessages) unsubscribeFromMessages();
         clearAttachmentPreview();
-        
+
         currentChatPartnerEmail = partnerEmail;
         currentChatId = getChatId(currentUser.email, partnerEmail);
-        
+
         currentChatNameEl.textContent = partnerName;
         showChatMain();
-        
+
         loadMessages(currentChatId, "chats");
         highlightActiveChat(); // Chama a função de destaque
     };
 
     window.startGroupChat = (groupId, groupName, event) => {
         if (event) event.preventDefault();
-        
+
         if (unsubscribeFromMessages) unsubscribeFromMessages();
         clearAttachmentPreview();
-        
+
         currentChatPartnerEmail = null;
-        currentChatId = groupId; 
-        
+        currentChatId = groupId;
+
         currentChatNameEl.textContent = `${groupName} (Grupo)`;
         showChatMain();
-        
+
         loadMessages(groupId, "groups");
         highlightActiveChat(); // Chama a função de destaque
     };
@@ -462,35 +485,49 @@ if (currentPage.includes("chat.html")) {
     // ===========================================
     // MENSAGENS E UPLOAD (Lógica Cloudinary)
     // ===========================================
-    
+
     // Universal: Carregar Mensagens (Com FIX para nome 'null' e opções)
-    function loadMessages(chatId, collectionName) {
-        
-        chatWindow.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary"></div></div>'; 
+    async function loadMessages(chatId, collectionName) {
+
+        chatWindow.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary"></div></div>';
+
+        if (currentChatPartnerEmail) {
+            const userDocRef = db.collection("users").doc(currentUser.email);
+            const userDoc = await userDocRef.get();
+            const blockedUsers = userDoc.data().blockedUsers || [];
+
+            if (blockedUsers.includes(currentChatPartnerEmail)) {
+                chatWindow.innerHTML = '<div class="text-center mt-5">Você bloqueou este usuário.</div>';
+                return;
+            }
+        }
 
         unsubscribeFromMessages = db.collection(collectionName).doc(chatId).collection("messages")
             .orderBy("createdAt", "asc")
             .onSnapshot((querySnapshot) => {
-                
+
                 querySnapshot.docChanges().forEach((change) => {
                     if (change.type === "added") {
                         const message = change.doc.data();
-                        
-                        if (message.senderEmail !== currentUser.email && document.hidden && messaging) { 
-                             new Notification(`Nova mensagem de ${message.senderName}`, {
-                                 body: message.type === 'text' ? message.text : `[${message.type.toUpperCase()}] Novo anexo`,
-                             });
+
+                        if (message.senderEmail !== currentUser.email && document.hidden) {
+                            if (Notification.permission === "granted") {
+                                const body = message.type === 'text' ? message.text : `[${message.type.toUpperCase()}] Novo anexo`;
+                                var notification = new Notification(message.senderName, {
+                                    body: body,
+                                });
+                            }
                         }
                     }
                 });
-                
+
                 chatWindow.innerHTML = "";
-                
+
                 querySnapshot.forEach((doc) => {
                     const message = doc.data();
                     let contentHTML = '';
                     const messageId = doc.id; // Capturar o ID do documento
-                    
+
                     const descriptionHtml = message.description ? `<p class="small text-muted">${message.description}</p>` : '';
                     const editedHtml = message.edited ? '<span class="small text-warning"> (editada)</span>' : '';
 
@@ -502,22 +539,22 @@ if (currentPage.includes("chat.html")) {
                     } else if (message.type === 'audio') {
                         // AJUSTE: Usa o wrapper para garantir a largura mínima
                         contentHTML = `<div class="audio-player-wrapper"><audio src="${message.text}" controls></audio></div>${descriptionHtml}`;
-                    } else if (message.type !== 'text') { 
+                    } else if (message.type !== 'text') {
                         // 💡 CORREÇÃO APLICADA: Tratamento de anexos (PDF, DOCX, etc.)
-                        
+
                         // 1. Extração Limpa do Nome do Ficheiro.
                         let filename = message.text.substring(message.text.lastIndexOf('/') + 1);
                         filename = filename.split('?')[0]; // Remove query params
                         // Remove o prefixo de ID do Cloudinary (ex: 'a1b2c3d4_nome-real.pdf' -> 'nome-real.pdf')
-                        filename = filename.split('_').slice(1).join('_') || "Arquivo Anexado"; 
-                        
+                        filename = filename.split('_').slice(1).join('_') || "Arquivo Anexado";
+
                         // 2. Define o texto do link
                         const linkText = message.description || filename;
 
                         // 3. Constrói o HTML: Link azul, nome do ficheiro e forçar download.
                         contentHTML = `<div style="background-color: #f0f4ff; padding: 10px; border-radius: 8px; border: 1px solid #d4e0ff;">
                                 📁 **FICHEIRO** (${message.type.toUpperCase()})<br>
-                                <a href="${message.text}" download="${filename}" target="_blank" 
+                                <a href="${message.text}" download="${filename}" target="_blank"
                                    style="color: #007bff; text-decoration: none; font-weight: 600;">
                                     ${linkText}
                                 </a>
@@ -528,17 +565,17 @@ if (currentPage.includes("chat.html")) {
 
                     const messageEl = document.createElement("div");
                     messageEl.classList.add("message");
-                    
-                    const senderDisplay = (message.senderEmail === currentUser.email) 
-                        ? `Você${editedHtml}` 
+
+                    const senderDisplay = (message.senderEmail === currentUser.email)
+                        ? `Você${editedHtml}`
                         : (message.senderName || message.senderEmail.split('@')[0]) + editedHtml;
-                    
+
                     const isSentByCurrentUser = message.senderEmail === currentUser.email;
 
                     if (isSentByCurrentUser) {
                         messageEl.classList.add("sent");
                     } else {
-                        messageEl.classList.add("received"); 
+                        messageEl.classList.add("received");
                     }
 
                     // ----------------------------------------------------
@@ -561,11 +598,11 @@ if (currentPage.includes("chat.html")) {
                         <div class="sender">${senderDisplay}</div>
                         <div class="message-content-wrapper d-flex align-items-center">
                             <div class="message-text-content">${contentHTML}</div>
-                            ${optionsHTML} 
+                            ${optionsHTML}
                         </div>`;
-                    
+
                     chatWindow.appendChild(messageEl);
-                    
+
                     // FIX: Adiciona os listeners APÓS o elemento messageEl ter o innerHTML definido
                     if (isSentByCurrentUser && message.type === 'text') {
                          const openOptionsMenu = () => {
@@ -579,30 +616,30 @@ if (currentPage.includes("chat.html")) {
 
                          // Listener para DOIS CLIQUES (PC)
                          messageEl.addEventListener('dblclick', (e) => {
-                             e.stopPropagation(); 
+                             e.stopPropagation();
                              openOptionsMenu();
                          });
-                        
+
                          // Listener de Long Press (celular)
                          let pressTimer;
                          messageEl.addEventListener('touchstart', (e) => {
                              e.stopPropagation();
-                             pressTimer = setTimeout(openOptionsMenu, 700); 
+                             pressTimer = setTimeout(openOptionsMenu, 700);
                          }, {passive: true});
 
                          messageEl.addEventListener('touchend', () => { clearTimeout(pressTimer); });
                          messageEl.addEventListener('touchmove', () => { clearTimeout(pressTimer); });
                     }
                 });
-                
+
                 chatWindow.scrollTop = chatWindow.scrollHeight;
             });
     }
-    
+
     // Listener de Envio de Mídia/Documentos (PRÉ-VISUALIZAÇÃO)
     fileUpload.addEventListener("change", (e) => {
         const files = e.target.files;
-        
+
         if (files.length > 0) {
             const file = files[0];
             const fileType = file.type.split('/')[0] || 'file';
@@ -614,11 +651,11 @@ if (currentPage.includes("chat.html")) {
 
     // FUNÇÃO: Faz o upload e envia a mensagem
     function executeUploadAndSendMessage(file, type, text) {
-        
-        if (!currentChatId) { 
-            alert("Selecione um contato primeiro para enviar arquivos!"); 
+
+        if (!currentChatId) {
+            alert("Selecione um contato primeiro para enviar arquivos!");
             clearAttachmentPreview();
-            return; 
+            return;
         }
 
         const originalPlaceholder = messageInput.placeholder;
@@ -627,9 +664,9 @@ if (currentPage.includes("chat.html")) {
 
         const resourceType = getResourceType(file.type);
         const formData = new FormData();
-        
+
         formData.append('file', file);
-        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET); 
+        formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
         formData.append('cloud_name', CLOUDINARY_CLOUD_NAME);
 
         // UPLOAD PARA CLOUDINARY VIA FETCH
@@ -641,20 +678,20 @@ if (currentPage.includes("chat.html")) {
         .then(data => {
             if (data.secure_url) {
                 const downloadURL = data.secure_url;
-                
+
                 const parentCollection = currentChatPartnerEmail ? "chats" : "groups";
-                const senderName = currentUser.displayName || currentUser.email.split('@')[0]; 
+                const senderName = currentUser.displayName || currentUser.email.split('@')[0];
 
                 // ENVIAR LINK PARA O FIRESTORE
                 db.collection(parentCollection).doc(currentChatId).collection("messages").add({
                     text: downloadURL,
-                    type: type, 
+                    type: type,
                     senderEmail: currentUser.email,
-                    senderName: senderName, 
-                    description: text, 
+                    senderName: senderName,
+                    description: text,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 })
-                .then(clearAttachmentPreview) 
+                .then(clearAttachmentPreview)
                 .catch(err => { throw new Error("Erro ao salvar no Firestore: " + err.message); });
 
             } else {
@@ -667,14 +704,14 @@ if (currentPage.includes("chat.html")) {
             clearAttachmentPreview();
         });
     }
-    
+
     // ===========================================
     // LÓGICA DE GRAVAÇÃO DE ÁUDIO
     // ===========================================
 
     btnRecordAudio.addEventListener('click', () => {
         if (mediaRecorder && mediaRecorder.state === "recording") {
-            stopRecording(true); 
+            stopRecording(true);
         } else {
             startRecording();
         }
@@ -682,7 +719,7 @@ if (currentPage.includes("chat.html")) {
 
     function startRecording() {
         if (!currentChatId) { alert("Selecione uma conversa primeiro para gravar!"); return; }
-        
+
         if (mediaRecorder && mediaRecorder.state === "recording") {
             stopRecording(false);
         }
@@ -692,26 +729,26 @@ if (currentPage.includes("chat.html")) {
                 audioStream = stream;
                 mediaRecorder = new MediaRecorder(stream);
                 audioChunks = [];
-                
+
                 mediaRecorder.start();
                 btnRecordAudio.textContent = '⏹️ Parar';
                 messageInput.placeholder = '🎙️ Gravando áudio...';
                 messageInput.disabled = true;
-                
+
                 mediaRecorder.ondataavailable = event => {
                     audioChunks.push(event.data);
                 };
 
                 mediaRecorder.onstop = () => {
                     if (audioStream) audioStream.getTracks().forEach(track => track.stop());
-                    
+
                     if (audioChunks.length > 0) {
                         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                         const audioFile = new File([audioBlob], `audio_${Date.now()}.webm`, { type: 'audio/webm' });
-                        
+
                         displayAttachmentPreview(audioFile, 'audio');
                     }
-                    
+
                     audioChunks = [];
                 };
             })
@@ -726,17 +763,28 @@ if (currentPage.includes("chat.html")) {
     function stopRecording(shouldKeepAudio = false) {
         if (mediaRecorder && mediaRecorder.state === "recording") {
             if (!shouldKeepAudio) {
-                audioChunks = []; 
+                audioChunks = [];
             }
             mediaRecorder.stop();
         }
     }
 
     // --- INTEGRAÇÃO COM O BOTÃO ENVIAR (messageForm) ---
-    messageForm.addEventListener("submit", (e) => {
+    messageForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        
+
         if (!currentChatId) { alert("Selecione uma conversa ou grupo primeiro!"); return; }
+
+        if (currentChatPartnerEmail) {
+            const userDocRef = db.collection("users").doc(currentUser.email);
+            const userDoc = await userDocRef.get();
+            const blockedUsers = userDoc.data().blockedUsers || [];
+
+            if (blockedUsers.includes(currentChatPartnerEmail)) {
+                alert("Você não pode enviar mensagens para um usuário bloqueado.");
+                return;
+            }
+        }
 
         const text = messageInput.value;
         const parentCollection = currentChatPartnerEmail ? "chats" : "groups";
@@ -747,7 +795,7 @@ if (currentPage.includes("chat.html")) {
             executeUploadAndSendMessage(attachmentFile, attachmentType, text);
             return;
         }
-        
+
         // 2. SE NÃO HOUVER FICHEIRO (Envio de texto puro)
         if (text.trim() === "") return;
 
@@ -765,7 +813,7 @@ if (currentPage.includes("chat.html")) {
             console.error("Erro ao enviar mensagem: ", error);
         });
     });
-    
+
     // ===========================================
     // FUNÇÕES DE EXCLUIR E EDITAR MENSAGENS
     // ===========================================
@@ -789,8 +837,8 @@ if (currentPage.includes("chat.html")) {
     btnEditMessage.addEventListener('click', () => {
         if (selectedMessageDocRef) {
             editMessageTextarea.value = selectedMessageText;
-            messageOptionsMenu.hide(); 
-            editMessageModal.show();  
+            messageOptionsMenu.hide();
+            editMessageModal.show();
         }
     });
 
@@ -802,7 +850,7 @@ if (currentPage.includes("chat.html")) {
         if (selectedMessageDocRef) {
             selectedMessageDocRef.update({
                 text: newText,
-                edited: true, 
+                edited: true,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             })
             .then(() => {
@@ -813,6 +861,167 @@ if (currentPage.includes("chat.html")) {
             .catch(error => {
                 alert("Erro ao salvar edição: " + error.message);
             });
+        }
+    });
+
+    // ===========================================
+    // PESQUISA DE CONVERSAS
+    // ===========================================
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const chatItems = document.querySelectorAll('.chat-item');
+
+        chatItems.forEach(item => {
+            const chatName = item.textContent.toLowerCase();
+            if (chatName.includes(searchTerm)) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+
+    // ===========================================
+    // GESTÃO DE CONTA
+    // ===========================================
+    btnAccount.addEventListener('click', () => {
+        accountNameInput.value = currentUser.displayName;
+        accountEmailInput.value = currentUser.email;
+        accountPasswordInput.value = "";
+        accountPasswordConfirmInput.value = "";
+        accountModal.show();
+    });
+
+    btnSaveAccount.addEventListener('click', async () => {
+        const newName = accountNameInput.value;
+        const newPassword = accountPasswordInput.value;
+        const newPasswordConfirm = accountPasswordConfirmInput.value;
+
+        if (newName !== currentUser.displayName) {
+            try {
+                await currentUser.updateProfile({
+                    displayName: newName
+                });
+                await db.collection("users").doc(currentUser.email).update({
+                    name: newName
+                });
+                alert("Nome atualizado com sucesso!");
+            } catch (error) {
+                alert("Erro ao atualizar o nome: " + error.message);
+            }
+        }
+
+        if (newPassword) {
+            if (newPassword.length < 6) {
+                alert("A nova senha deve ter pelo menos 6 caracteres.");
+                return;
+            }
+
+            if (newPassword !== newPasswordConfirm) {
+                alert("As senhas não coincidem.");
+                return;
+            }
+
+            try {
+                await currentUser.updatePassword(newPassword);
+                alert("Senha atualizada com sucesso!");
+            } catch (error) {
+                alert("Erro ao atualizar a senha: " + error.message);
+            }
+        }
+
+        accountModal.hide();
+    });
+
+    // ===========================================
+    // ENCAMINHAR MENSAGEM
+    // ===========================================
+    btnForwardMessage.addEventListener('click', async () => {
+        const userDoc = await db.collection("users").doc(currentUser.email).get();
+        const contacts = userDoc.data().contacts || [];
+        let listHTML = '';
+
+        for (const contactEmail of contacts) {
+            const contactDoc = await db.collection("users").doc(contactEmail).get();
+            if (contactDoc.exists) {
+                const contactName = contactDoc.data().name;
+                listHTML += `<a href="#" class="list-group-item list-group-item-action" onclick="forwardMessageTo('${contactEmail}', 'user')">${contactName}</a>`;
+            }
+        }
+
+        const groupsSnapshot = await db.collection("groups").where("members", "array-contains", currentUser.email).get();
+        groupsSnapshot.forEach(doc => {
+            const group = doc.data();
+            listHTML += `<a href="#" class="list-group-item list-group-item-action" onclick="forwardMessageTo('${doc.id}', 'group')">${group.name} (Grupo)</a>`;
+        });
+
+        forwardContactsList.innerHTML = listHTML;
+        messageOptionsMenu.hide();
+        forwardMessageModal.show();
+    });
+
+    window.forwardMessageTo = async (targetId, type) => {
+        if (!selectedMessageDocRef) {
+            alert("Nenhuma mensagem selecionada para encaminhar.");
+            return;
+        }
+
+        const messageToForward = await selectedMessageDocRef.get();
+        const messageData = messageToForward.data();
+
+        let newChatId;
+        let collectionName;
+
+        if (type === 'user') {
+            newChatId = getChatId(currentUser.email, targetId);
+            collectionName = 'chats';
+        } else {
+            newChatId = targetId;
+            collectionName = 'groups';
+        }
+
+        try {
+            await db.collection(collectionName).doc(newChatId).collection("messages").add({
+                ...messageData,
+                forwarded: true,
+                originalSender: messageData.senderName,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            alert("Mensagem encaminhada com sucesso!");
+        } catch (error) {
+            alert("Erro ao encaminhar a mensagem: " + error.message);
+        }
+
+        forwardMessageModal.hide();
+    };
+
+    // ===========================================
+    // BLOQUEAR USUÁRIO
+    // ===========================================
+    btnBlockUser.addEventListener('click', async () => {
+        if (!currentChatPartnerEmail) {
+            alert("Selecione um contato para bloquear.");
+            return;
+        }
+
+        const userDocRef = db.collection("users").doc(currentUser.email);
+        const userDoc = await userDocRef.get();
+        const blockedUsers = userDoc.data().blockedUsers || [];
+
+        if (blockedUsers.includes(currentChatPartnerEmail)) {
+            if (confirm("Você tem certeza que deseja desbloquear este usuário?")) {
+                await userDocRef.update({
+                    blockedUsers: firebase.firestore.FieldValue.arrayRemove(currentChatPartnerEmail)
+                });
+                alert("Usuário desbloqueado com sucesso!");
+            }
+        } else {
+            if (confirm("Você tem certeza que deseja bloquear este usuário?")) {
+                await userDocRef.update({
+                    blockedUsers: firebase.firestore.FieldValue.arrayUnion(currentChatPartnerEmail)
+                });
+                alert("Usuário bloqueado com sucesso!");
+            }
         }
     });
 }
