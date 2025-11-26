@@ -10,10 +10,57 @@
 }
 
 /* ------------------ 2. ESTILOS GERAIS ------------------ */
+:root {
+    --bg-color: #eae6df;
+    --text-color: #050505;
+    --primary-color: #0d6efd;
+    --secondary-color: #f0f2f5;
+    --accent-color: #4EC957;
+    --sent-message-bg: #dcf8c6;
+    --received-message-bg: #ffffff;
+    --border-color: #ddd;
+}
+
+.dark-mode {
+    --bg-color: #1a1a1a;
+    --text-color: #f1f1f1;
+    --primary-color: #25D366; /* WhatsApp Green */
+    --secondary-color: #2a2a2a;
+    --accent-color: #34B7F1; /* WhatsApp Blue */
+    --sent-message-bg: #075e54;
+    --received-message-bg: #333333;
+    --border-color: #444;
+}
+
+.dark-mode #chat-window {
+    background-image: none;
+}
+
+.dark-mode .list-group-item {
+    background-color: var(--secondary-color);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+.dark-mode .list-group-item.active {
+    background-color: var(--primary-color);
+    color: #fff;
+}
+
+.dark-mode .form-control {
+    background-color: var(--received-message-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+.dark-mode .form-control:focus {
+    background-color: #444;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background-color: #f0f2f5; 
-    color: #050505;
+    background-color: var(--bg-color);
+    color: var(--text-color);
     margin: 0; padding: 0;
     height: 100vh;
     display: flex;
@@ -22,45 +69,70 @@ body {
 
 /* ------------------ 3. LAYOUT GERAL DO CHAT ------------------ */
 #auth-container {
-    animation: fadeIn 0.8s ease-out;
+    background-color: var(--received-message-bg);
     max-width: 400px; width: 90%;
-    margin: auto; border-radius: 12px;
+    margin: auto; border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+#auth-container .form-control {
+    border-radius: 20px;
+    border: 1px solid var(--border-color);
+    padding: 10px 15px;
+}
+
+#auth-container .btn {
+    border-radius: 20px;
+    padding: 10px 15px;
+    font-weight: 600;
 }
 #error-message { font-weight: 500; color: #dc3545; text-align: center; }
-#chat-header {
-    background: #ffffff; color: #050505;
-    padding: 1rem;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-    z-index: 10; border-bottom: 1px solid #ddd;
+
+.zap-title {
+    color: var(--accent-color);
 }
+
+#chat-header {
+    background-color: var(--secondary-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+#chat-main-col #chat-header {
+    background-color: var(--primary-color);
+}
+
 #chat-window {
-    background-color: #f0f2f5;
-    display: flex; flex-direction: column;
-    padding: 1rem;
+    background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
+    background-repeat: repeat;
+    background-color: var(--bg-color);
+}
+
+#message-form {
+    background-color: var(--secondary-color);
 }
 
 /* Formulário de Envio */
 #message-form {
     padding: 0.75rem 1rem;
-    background-color: #ffffff;
-    border-top: 1px solid #ddd;
+    background-color: var(--received-message-bg);
+    border-top: 1px solid var(--border-color);
 }
 #message-input {
-    border-radius: 20px !important; 
-    background-color: #f0f2f5;
-    border: 1px solid #f0f2f5;
+    border-radius: 20px !important;
+    background-color: var(--secondary-color);
+    border: 1px solid var(--secondary-color);
     transition: all 0.2s ease;
 }
 #message-input:focus {
-    background-color: #ffffff;
-    border: 1px solid #0d6efd;
+    background-color: var(--received-message-bg);
+    border: 1px solid var(--primary-color);
     box-shadow: none;
 }
 #message-form .btn {
     flex-shrink: 0; width: 44px; height: 44px;
     display: flex; align-items: center; justify-content: center;
 }
-#message-form .btn-light i { color: #555; }
+#message-form .btn-light i { color: var(--text-color); }
 
 /* ----------------------------------------------------- */
 /* 4. BALÕES DE CHAT (Com Vistos e Respostas)            */
@@ -74,24 +146,24 @@ body {
     position: relative;
     word-break: break-word;
     box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
-    animation: slideInUp 0.3s ease-out; 
+    animation: slideInUp 0.3s ease-out;
 }
 .message.sent {
-    background-color: #dcf8c6;
-    align-self: flex-end; 
+    background-color: var(--sent-message-bg);
+    align-self: flex-end;
     margin-left: auto;
-    border-bottom-right-radius: 4px; 
+    border-bottom-right-radius: 4px;
 }
 .message.received {
-    background-color: #ffffff;
-    border: 1px solid #eee;
-    align-self: flex-start; 
+    background-color: var(--received-message-bg);
+    border: 1px solid var(--border-color);
+    align-self: flex-start;
     border-bottom-left-radius: 4px;
 }
 .message .sender {
     font-size: 0.75em;
     font-weight: bold;
-    color: #0d6efd;
+    color: var(--primary-color);
     margin-bottom: 4px;
     display: block;
 }
@@ -99,7 +171,7 @@ body {
 /* NOVO: Estilos para "Responder a" (Quote) */
 .message .quoted-message {
     background-color: rgba(0, 0, 0, 0.05);
-    border-left: 3px solid #0d6efd;
+    border-left: 3px solid var(--primary-color);
     padding: 8px 10px;
     margin-bottom: 8px;
     border-radius: 4px;
@@ -107,10 +179,10 @@ body {
 }
 .message .quoted-message .quoted-sender {
     font-weight: 600;
-    color: #0b5ed7;
+    color: var(--primary-color);
 }
 .message .quoted-message .quoted-text {
-    color: #333;
+    color: var(--text-color);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -126,12 +198,25 @@ body {
     margin-top: 4px; /* Alinha com a última linha de texto */
 }
 .message .read-receipt.read {
-    color: #0d6efd; /* Azul para "lido" */
+    color: var(--accent-color); /* Verde para "lido" */
 }
 
+.reactions {
+    display: flex;
+    gap: 5px;
+    margin-top: 5px;
+}
+
+.reactions span {
+    background-color: var(--secondary-color);
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
 
 /* Mídia (Imagens, Vídeos, Áudio) */
-.message img, 
+.message img,
 .message video {
     max-width: 100%; height: auto;
     border-radius: 8px; margin-top: 5px;
@@ -147,7 +232,7 @@ body {
     display: block; /* Garante que o áudio ocupa a própria linha */
     width: 100%;    /* Usa 100% da largura do wrapper */
     min-height: 40px; /* Garante que o controlo do player seja visível */
-    background-color: #f1f3f4; /* Cor de fundo para melhor contraste */
+    background-color: var(--secondary-color); /* Cor de fundo para melhor contraste */
     border-radius: 8px;
     padding: 2px;
 }
@@ -159,7 +244,7 @@ body {
 
 /* Indicador "A Escrever..." */
 #typing-indicator {
-    background-color: #f0f2f5;
+    background-color: var(--secondary-color);
     padding: 0 1rem;
     height: 30px; /* Altura fixa para não "saltar" */
     display: flex;
@@ -184,7 +269,7 @@ body {
 
 /* Barra de "Responder a" */
 #reply-preview {
-    background-color: #f8f9fa;
-    border-top: 1px solid #ddd;
-    border-bottom: 1px solid #ddd;
+    background-color: var(--secondary-color);
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
 }

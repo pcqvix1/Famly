@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat</title>
-    
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
-    
+
     <style>
         body { height: 100vh; overflow: hidden; }
         #main-container { height: 100vh; display: flex; }
@@ -21,13 +21,13 @@
         }
         #conversation-list { overflow-y: auto; flex-grow: 1; }
         #chat-main-col {
-            flex-grow: 1; 
+            flex-grow: 1;
             display: flex;
             flex-direction: column;
             height: 100%;
         }
         #chat-window { flex-grow: 1; overflow-y: auto; }
-        
+
         @media (max-width: 991.98px) {
             #conversation-list-col, #chat-main-col {
                 width: 100%;
@@ -42,17 +42,27 @@
     <div id="main-container">
 
         <div id="conversation-list-col" class="col-12 col-lg-3">
-            
+
             <div id="chat-header" class="d-flex justify-content-between align-items-center p-3 border-bottom">
-                <h2 class="h5 m-0 text-primary">Conversas</h2>
+                <h2 class="h5 m-0 zap-title">Conversas</h2>
                 <div class="btn-group">
+                    <button id="btn-dark-mode" class="btn btn-sm btn-outline-primary" title="Alternar Modo Escuro">
+                        <i class="bi bi-moon-stars-fill"></i>
+                    </button>
                     <button id="btn-add-contact" class="btn btn-sm btn-outline-primary" title="Adicionar Contacto">
                         <i class="bi bi-person-plus-fill"></i>
                     </button>
                     <button id="btn-create-group" class="btn btn-sm btn-outline-primary" title="Criar Grupo">
                         <i class="bi bi-people-fill"></i>
                     </button>
+                    <button id="btn-account" class="btn btn-sm btn-outline-primary" title="Minha Conta">
+                        <i class="bi bi-person-circle"></i>
+                    </button>
                 </div>
+            </div>
+
+            <div class="p-3">
+                <input type="text" id="search-input" class="form-control" placeholder="Pesquisar ou começar uma nova conversa">
             </div>
 
             <div id="conversation-list" class="list-group list-group-flush">
@@ -65,14 +75,29 @@
         </div>
 
         <div id="chat-main-col" class="col-12 col-lg-9">
-            
+
             <div id="chat-header" class="bg-primary text-white p-3 d-flex justify-content-between align-items-center">
                 <button id="btn-back-mobile" class="btn btn-light me-3 d-lg-none" title="Voltar">
                     <i class="bi bi-arrow-left"></i>
                 </button>
-                
+
                 <h2 id="current-chat-name" class="h5 m-0 flex-grow-1">Selecione uma Conversa</h2>
-                
+
+                <button id="btn-voice-call" class="btn btn-sm btn-outline-light me-2" title="Chamada de Voz">
+                    <i class="bi bi-telephone-fill"></i>
+                </button>
+                <button id="btn-video-call" class="btn btn-sm btn-outline-light me-2" title="Chamada de Vídeo">
+                    <i class="bi bi-camera-video-fill"></i>
+                </button>
+
+                <button id="btn-group-info" class="btn btn-sm btn-outline-light me-2 d-none" title="Informações do Grupo">
+                    <i class="bi bi-info-circle-fill"></i>
+                </button>
+
+                <button id="btn-block-user" class="btn btn-sm btn-outline-light me-2" title="Bloquear Usuário">
+                    <i class="bi bi-slash-circle-fill"></i>
+                </button>
+
                 <button id="btn-logout-mobile" class="btn btn-danger btn-sm d-lg-none" title="Sair">
                     <i class="bi bi-box-arrow-right"></i>
                 </button>
@@ -102,7 +127,7 @@
             </div>
 
             <form id="message-form" class="d-flex align-items-center p-2 border-top bg-white">
-                
+
                 <label for="file-upload" class="btn btn-light rounded-circle p-2 me-2" title="Anexar Arquivo" style="cursor: pointer;">
                     <i class="bi bi-paperclip fs-5 lh-1"></i>
                 </label>
@@ -111,23 +136,24 @@
                 <button type="button" id="btn-record-audio" class="btn btn-light rounded-circle p-2 me-2" title="Gravar Áudio">
                     <i class="bi bi-mic-fill fs-5 lh-1"></i>
                 </button>
-                
+
                 <input type="text" id="message-input" class="form-control" placeholder="Escreva sua mensagem..." autocomplete="off">
-                
+
                 <button type="submit" class="btn btn-primary rounded-circle p-2 ms-2" title="Enviar">
                      <i class="bi bi-send-fill fs-5 lh-1"></i>
                 </button>
             </form>
-            
+
         </div>
     </div>
-    
+
     <div class="modal fade" id="messageOptionsMenu" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-sm modal-dialog-centered">
         <div class="modal-content">
           <div class="modal-header"><h5 class="modal-title">Opções de Mensagem</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
           <div class="modal-body">
             <button id="btn-reply-message" class="btn btn-outline-secondary w-100 mb-2"><i class="bi bi-reply-fill me-2"></i> Responder</button>
+            <button id="btn-forward-message" class="btn btn-outline-info w-100 mb-2"><i class="bi bi-arrow-right-circle-fill me-2"></i> Encaminhar</button>
             <button id="btn-edit-message" class="btn btn-outline-primary w-100 mb-2"><i class="bi bi-pencil-fill me-2"></i> Editar</button>
             <button id="btn-delete-message" class="btn btn-outline-danger w-100"><i class="bi bi-trash-fill me-2"></i> Excluir</button>
           </div>
@@ -191,10 +217,107 @@
       </div>
     </div>
 
+    <div class="modal fade" id="accountModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header"><h5 class="modal-title">Minha Conta</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="account-name" class="form-label">Nome:</label>
+              <input type="text" class="form-control" id="account-name">
+            </div>
+            <div class="mb-3">
+              <label for="account-email" class="form-label">Email:</label>
+              <input type="email" class="form-control" id="account-email" disabled>
+            </div>
+            <hr>
+            <h6>Alterar Senha</h6>
+            <div class="mb-3">
+              <label for="account-password" class="form-label">Nova Senha:</label>
+              <input type="password" class="form-control" id="account-password">
+            </div>
+            <div class="mb-3">
+                <label for="account-password-confirm" class="form-label">Confirmar Nova Senha:</label>
+                <input type="password" class="form-control" id="account-password-confirm">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" id="btn-save-account" class="btn btn-primary">Salvar Alterações</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="forwardMessageModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Encaminhar para...</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div id="forward-contacts-list" class="list-group list-group-flush"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="callModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="call-modal-title">Chamada</h5>
+                </div>
+                <div class="modal-body text-center">
+                    <div id="incoming-call-view" class="d-none">
+                        <p id="incoming-call-text">Recebendo chamada de...</p>
+                        <button id="btn-accept-call" class="btn btn-success me-2">Aceitar</button>
+                        <button id="btn-reject-call" class="btn btn-danger">Rejeitar</button>
+                    </div>
+                    <div id="outgoing-call-view" class="d-none">
+                        <p id="outgoing-call-text">Chamando...</p>
+                        <button id="btn-cancel-call" class="btn btn-danger">Cancelar</button>
+                    </div>
+                    <div id="active-call-view" class="d-none">
+                        <video id="remote-video" autoplay playsinline style="width:100%; height:auto;"></video>
+                        <video id="local-video" autoplay playsinline muted style="width:30%; height:auto; position:absolute; bottom:10px; right:10px;"></video>
+                        <div class="mt-3">
+                            <button id="btn-toggle-mic" class="btn btn-secondary">Microfone</button>
+                            <button id="btn-toggle-video" class="btn btn-secondary">Vídeo</button>
+                            <button id="btn-end-call" class="btn btn-danger">Terminar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="groupInfoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="group-info-name">Informações do Grupo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>Membros do Grupo:</h6>
+                    <div id="group-members-list" class="list-group list-group-flush"></div>
+                    <hr>
+                    <div id="group-admin-actions" class="d-none">
+                        <h6>Ações de Administrador:</h6>
+                        <button id="btn-add-member" class="btn btn-outline-primary w-100 mb-2">Adicionar Membro</button>
+                        <button id="btn-remove-member" class="btn btn-outline-danger w-100">Remover Membro</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js"></script> 
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="app.js"></script>
 </body>
