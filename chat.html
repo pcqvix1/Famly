@@ -50,7 +50,7 @@
             <div class="search-box">
                 <div class="search-input-wrapper">
                     <i class="bi bi-search"></i>
-                    <input type="text" id="search-input" placeholder="Pesquisar ou iniciar nova conversa">
+                    <input type="text" id="search-input" placeholder="Pesquisar conversa...">
                 </div>
             </div>
 
@@ -71,7 +71,7 @@
                     <path d="M129 107C129 118.046 137.954 127 149 127H154C165.046 127 174 118.046 174 107" stroke="var(--primary)" stroke-width="3" stroke-linecap="round"/>
                 </svg>
                 <h2>FamlyChat Web</h2>
-                <p>Envie e receba mensagens sem manter seu telefone conectado. Use o FamlyChat em até 4 dispositivos ao mesmo tempo.</p>
+                <p>Envie e receba mensagens sem manter seu telefone conectado.</p>
             </div>
 
             <div class="chat-container" id="chat-container" style="display: none;">
@@ -90,9 +90,6 @@
                         <div class="chat-header-status" id="chat-status">offline</div>
                     </div>
                     <div class="chat-header-actions">
-                        <button class="icon-btn" id="btn-search-messages" title="Pesquisar">
-                            <i class="bi bi-search"></i>
-                        </button>
                         <div style="position: relative;">
                             <button class="icon-btn" id="btn-chat-menu" title="Mais opções">
                                 <i class="bi bi-three-dots-vertical"></i>
@@ -100,7 +97,7 @@
                             <div class="dropdown-menu" id="chat-menu">
                                 <div class="dropdown-item" id="chat-menu-info">
                                     <i class="bi bi-info-circle"></i>
-                                    <span>Info do contato</span>
+                                    <span>Info do grupo/contato</span>
                                 </div>
                                 <div class="dropdown-item" id="chat-menu-media">
                                     <i class="bi bi-image"></i>
@@ -193,39 +190,14 @@
                     <input type="file" id="avatar-upload" accept="image/*" style="display: none;">
                 </div>
                 <h3 id="settings-name">Seu Nome</h3>
-                <p id="settings-status">Olá! Estou usando o FamlyChat</p>
+                <p id="settings-email">email@exemplo.com</p>
             </div>
             <div class="settings-list">
                 <div class="settings-item" id="settings-profile-edit">
                     <i class="bi bi-person"></i>
                     <div class="settings-item-info">
-                        <div class="settings-item-title">Perfil</div>
-                        <div class="settings-item-desc">Nome, status, foto</div>
-                    </div>
-                </div>
-                <div class="settings-item" id="settings-notifications">
-                    <i class="bi bi-bell"></i>
-                    <div class="settings-item-info">
-                        <div class="settings-item-title">Notificações</div>
-                        <div class="settings-item-desc">Sons, alertas</div>
-                    </div>
-                </div>
-                <div class="settings-item" id="settings-privacy">
-                    <i class="bi bi-lock"></i>
-                    <div class="settings-item-info">
-                        <div class="settings-item-title">Privacidade</div>
-                        <div class="settings-item-desc">Visto por último, foto de perfil</div>
-                    </div>
-                </div>
-                <div class="settings-item" id="settings-theme-toggle">
-                    <i class="bi bi-palette"></i>
-                    <div class="settings-item-info">
-                        <div class="settings-item-title">Tema</div>
-                        <div class="settings-item-desc">Claro / Escuro</div>
-                    </div>
-                    <div class="theme-toggle">
-                        <input type="checkbox" id="theme-switch">
-                        <label for="theme-switch"></label>
+                        <div class="settings-item-title">Dados da conta</div>
+                        <div class="settings-item-desc">Foto, nome, email e senha</div>
                     </div>
                 </div>
             </div>
@@ -322,6 +294,156 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancel-edit-message">Cancelar</button>
                 <button class="btn btn-success" id="save-edit-message">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="emoji-picker" id="emoji-picker">
+        <div class="emoji-picker-content">
+            <span class="emoji-option">😀</span>
+            <span class="emoji-option">😁</span>
+            <span class="emoji-option">😂</span>
+            <span class="emoji-option">🤣</span>
+            <span class="emoji-option">😊</span>
+            <span class="emoji-option">😍</span>
+            <span class="emoji-option">😘</span>
+            <span class="emoji-option">😎</span>
+            <span class="emoji-option">🤩</span>
+            <span class="emoji-option">😢</span>
+            <span class="emoji-option">😡</span>
+            <span class="emoji-option">👍</span>
+            <span class="emoji-option">🙏</span>
+            <span class="emoji-option">👏</span>
+            <span class="emoji-option">🔥</span>
+            <span class="emoji-option">🎉</span>
+            <span class="emoji-option">❤️</span>
+            <span class="emoji-option">💔</span>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-contact-info">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Informações</h3>
+                <button class="icon-btn" id="close-contact-info">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-profile" style="padding-top: 10px; position: relative;">
+                    <div class="settings-avatar">
+                        <div class="avatar" id="contact-info-avatar">
+                            <i class="bi bi-person-fill"></i>
+                        </div>
+                        <button class="edit-avatar-btn" id="btn-edit-group-photo" style="display: none;">
+                            <i class="bi bi-camera-fill"></i>
+                        </button>
+                        <input type="file" id="group-photo-upload" accept="image/*" style="display: none;">
+                    </div>
+                    <h3 id="contact-info-name">Nome</h3>
+                    <p id="contact-info-status">Status</p>
+                </div>
+                
+                <div class="settings-list" style="max-height: 250px;">
+                    <div id="individual-info-section">
+                        <div class="settings-item">
+                            <i class="bi bi-envelope"></i>
+                            <div class="settings-item-info">
+                                <div class="settings-item-title">Email</div>
+                                <div class="settings-item-desc" id="contact-info-email">-</div>
+                            </div>
+                        </div>
+                        <div class="settings-item">
+                            <i class="bi bi-clock"></i>
+                            <div class="settings-item-info">
+                                <div class="settings-item-title">Última visualização</div>
+                                <div class="settings-item-desc" id="contact-info-last-seen">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="group-info-section" style="display: none;">
+                        <div class="settings-item" id="contact-info-type-row">
+                            <i class="bi bi-people-fill"></i>
+                            <div class="settings-item-info">
+                                <div class="settings-item-title">Tipo</div>
+                                <div class="settings-item-desc" id="contact-info-type">Grupo</div>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-item" id="btn-add-group-member" style="display: none; color: var(--primary); cursor: pointer;">
+                            <i class="bi bi-person-plus-fill" style="color: var(--primary);"></i>
+                            <div class="settings-item-info">
+                                <div class="settings-item-title" style="color: var(--primary);">Adicionar participante</div>
+                            </div>
+                        </div>
+
+                        <div style="padding: 16px 20px 0;">
+                            <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--text-secondary);">Membros do grupo</h4>
+                            <div id="contact-info-members" class="contacts-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="close-contact-info-footer">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-media">
+        <div class="modal-content" style="max-width: 640px;">
+            <div class="modal-header">
+                <h3>Mídia, links e docs</h3>
+                <button class="icon-btn" id="close-media">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <h4 style="margin-bottom: 8px; font-size: 14px; color: var(--text-secondary);">Fotos e vídeos</h4>
+                <div id="media-photos" class="media-grid" style="margin-bottom: 16px;"></div>
+
+                <h4 style="margin-bottom: 8px; font-size: 14px; color: var(--text-secondary);">Áudios</h4>
+                <div id="media-audios" class="media-list" style="margin-bottom: 16px;"></div>
+
+                <h4 style="margin-bottom: 8px; font-size: 14px; color: var(--text-secondary);">Documentos</h4>
+                <div id="media-docs" class="media-list" style="margin-bottom: 16px;"></div>
+
+                <h4 style="margin-bottom: 8px; font-size: 14px; color: var(--text-secondary);">Links</h4>
+                <div id="media-links" class="media-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="close-media-footer">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-profile-edit">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Dados da conta</h3>
+                <button class="icon-btn" id="close-profile-edit">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="profile-name-input" placeholder="Seu nome">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="profile-email-input" placeholder="email@exemplo.com">
+                </div>
+                <div class="form-group">
+                    <label>Nova senha</label>
+                    <input type="password" id="profile-password-input" placeholder="Deixe em branco para manter a atual">
+                </div>
+                <div id="profile-edit-error" class="error-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-profile-edit">Cancelar</button>
+                <button class="btn btn-success" id="save-profile-edit">Salvar</button>
             </div>
         </div>
     </div>
