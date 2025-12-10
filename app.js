@@ -253,76 +253,117 @@ auth.onAuthStateChanged(async (user) => {
     });
 });
 
+let contactPresenceListeners = [];
+
 async function loadConversations() {
     if (!conversationList) return;
     conversationList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Carregando...</p></div>';
+    
+    contactPresenceListeners.forEach(unsub => unsub());
+    contactPresenceListeners = [];
     
     db.collection('users').doc(currentUser.email).onSnapshot(async (doc) => {
         const userData = doc.data();
         const contacts = userData?.contacts || [];
         
-        let html = '';
-        
-        for (const contactEmail of contacts) {
-            try {
-                const contactDoc = await db.collection('users').doc(contactEmail).get();
-                if (contactDoc.exists) {
-                    const contact = contactDoc.data();
-                    const chatId = getChatId(currentUser.email, contactEmail);
-                    const initials = getInitials(contact.name);
-                    
-                    html += `
-                        <div class="conversation-item" data-email="${contactEmail}" data-name="${contact.name}" data-type="chat" data-id="${chatId}">
-                            <div class="avatar-wrapper">
-                                <div class="avatar">${contact.photoURL ? `<img src="${contact.photoURL}">` : initials}</div>
-                                ${contact.isOnline ? '<div class="online-indicator"></div>' : ''}
-                            </div>
-                            <div class="conversation-info">
-                                <div class="conversation-name">${contact.name}</div>
-                                <div class="conversation-preview">${contact.isOnline ? 'Online' : formatLastSeen(contact.lastSeen)}</div>
-                            </div>
-                        </div>
-                    `;
-                }
-            } catch (e) {
-                console.error('Error loading contact:', e);
-            }
-        }
+        contactPresenceListeners.forEach(unsub => unsub());
+        contactPresenceListeners = [];
         
         const groupsSnapshot = await db.collection('groups')
             .where('members', 'array-contains', currentUser.email)
             .get();
         
+        const groups = [];
         groupsSnapshot.forEach((doc) => {
-            const group = doc.data();
-            const groupId = doc.id;
-            const initials = getInitials(group.name);
-            
-            html += `
-                <div class="conversation-item" data-name="${group.name}" data-type="group" data-id="${groupId}">
-                    <div class="avatar group-avatar">${initials}</div>
-                    <div class="conversation-info">
-                        <div class="conversation-name">
-                            ${group.name}
-                            <span class="badge">Grupo</span>
-                        </div>
-                        <div class="conversation-preview">${group.members.length} membros</div>
-                    </div>
-                </div>
-            `;
+            groups.push({ id: doc.id, ...doc.data() });
         });
         
-        if (html === '') {
-            conversationList.innerHTML = `
-                <div class="empty-state">
-                    <i class="bi bi-chat-dots"></i>
-                    <h3>Nenhuma conversa</h3>
-                    <p>Adicione contatos ou crie um grupo para começar a conversar</p>
-                </div>
-            `;
-        } else {
-            conversationList.innerHTML = html;
-            attachConversationListeners();
+        function renderConversationList(contactsData) {
+            let html = '';
+            
+            for (const contact of contactsData) {
+                const chatId = getChatId(currentUser.email, contact.email);
+                const initials = getInitials(contact.name);
+                const now = new Date();
+                let isReallyOnline = false;
+                if (contact.lastSeen) {
+                    const last = contact.lastSeen.toDate ? contact.lastSeen.toDate() : new Date(contact.lastSeen);
+                    const diff = now - last;
+                    isReallyOnline = !!contact.isOnline && diff < 120000;
+                }
+                
+                html += `
+                    <div class="conversation-item" data-email="${contact.email}" data-name="${contact.name}" data-type="chat" data-id="${chatId}">
+                        <div class="avatar-wrapper">
+                            <div class="avatar">${contact.photoURL ? `<img src="${contact.photoURL}">` : initials}</div>
+                            ${isReallyOnline ? '<div class="online-indicator"></div>' : ''}
+                        </div>
+                        <div class="conversation-info">
+                            <div class="conversation-name">${contact.name}</div>
+                            <div class="conversation-preview">${isReallyOnline ? 'Online' : formatLastSeen(contact.lastSeen)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            for (const group of groups) {
+                const initials = getInitials(group.name);
+                html += `
+                    <div class="conversation-item" data-name="${group.name}" data-type="group" data-id="${group.id}">
+                        <div class="avatar group-avatar">${initials}</div>
+                        <div class="conversation-info">
+                            <div class="conversation-name">
+                                ${group.name}
+                                <span class="badge">Grupo</span>
+                            </div>
+                            <div class="conversation-preview">${group.members.length} membros</div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (html === '') {
+                conversationList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="bi bi-chat-dots"></i>
+                        <h3>Nenhuma conversa</h3>
+                        <p>Adicione contatos ou crie um grupo para começar a conversar</p>
+                    </div>
+                `;
+            } else {
+                conversationList.innerHTML = html;
+                attachConversationListeners();
+            }
+        }
+        
+        const contactsData = [];
+        
+        if (contacts.length === 0 && groups.length === 0) {
+            renderConversationList([]);
+            return;
+        }
+        
+        if (contacts.length === 0) {
+            renderConversationList([]);
+            return;
+        }
+        
+        for (const contactEmail of contacts) {
+            const unsub = db.collection('users').doc(contactEmail).onSnapshot((contactDoc) => {
+                if (contactDoc.exists) {
+                    const contact = contactDoc.data();
+                    const existingIndex = contactsData.findIndex(c => c.email === contactEmail);
+                    if (existingIndex >= 0) {
+                        contactsData[existingIndex] = contact;
+                    } else {
+                        contactsData.push(contact);
+                    }
+                    renderConversationList(contactsData);
+                }
+            }, (e) => {
+                console.error('Error loading contact:', e);
+            });
+            contactPresenceListeners.push(unsub);
         }
     });
 }
@@ -518,30 +559,12 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
     
     const editedBadge = message.edited ? '<span class="edited-badge">editada</span>' : '';
     
-    // CORREÇÃO (3): Lógica de status da mensagem (Visto / Entregue)
-    const readBy = message.readBy || [];
-    // Para chats 1:1, basta verificar se alguém (o destinatário) leu.
-    // Para grupos, você pode querer verificar se todos leram, mas por enquanto:
-    // se o array readBy tiver 1 ou mais elementos, consideramos "lido".
-    // Em um chat 1:1, o remetente não está em readBy. Se o array tiver 1, é o destinatário.
-    // No entanto, para grupos, o remetente PODE estar em readBy se ele também for um "leitor".
-    // Pelo contexto do chat 1:1, vamos verificar se o array NÃO está vazio.
-    const allRead = readBy.length >= 1; 
-    
-    const statusIcon = isSent 
-        ? (allRead 
-            ? '<i class="bi bi-check2-all message-status read-status"></i>' 
-            : '<i class="bi bi-check2 message-status delivered-status"></i>'
-          )
-        : ''; // Mensagens recebidas não mostram ícone de status
-    
     messageEl.innerHTML = `
         ${senderHTML}
         ${contentHTML}
         <div class="message-footer">
             ${editedBadge}
             <span class="message-time">${formatTime(message.createdAt)}</span>
-            ${statusIcon}
         </div>
     `;
     
