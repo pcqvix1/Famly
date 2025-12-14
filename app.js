@@ -467,42 +467,64 @@ async function startGroupChat(groupId, groupName) {
 
 function loadMessages(collectionName) {
     chatMessages.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
-    
+
+    let initialLoad = true;
+
     unsubscribeFromMessages = db.collection(collectionName)
         .doc(currentChatId)
         .collection('messages')
         .orderBy('createdAt', 'asc')
         .onSnapshot((snapshot) => {
-            const fragment = document.createDocumentFragment();
-            chatMessages.innerHTML = '';
-            
-            snapshot.forEach((doc) => {
+            const shouldStickToBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+
+            if (initialLoad) {
+                chatMessages.innerHTML = '';
+            }
+
+            snapshot.docChanges().forEach((change) => {
+                const doc = change.doc;
                 const message = doc.data();
                 const messageId = doc.id;
-                
-                // CORREÇÃO (2): Lógica de marcar a mensagem como lida
+
                 if (message.senderEmail !== currentUser.email) {
                     const readBy = message.readBy || [];
                     if (!readBy.includes(currentUser.email)) {
                         setTimeout(async () => {
                             try {
                                 const messagesRef = db.collection(collectionName).doc(currentChatId).collection('messages');
-                                await messagesRef.doc(messageId).update({ 
-                                    readBy: firebase.firestore.FieldValue.arrayUnion(currentUser.email) 
+                                await messagesRef.doc(messageId).update({
+                                    readBy: firebase.firestore.FieldValue.arrayUnion(currentUser.email)
                                 });
                             } catch (e) {
-                                console.error("Erro ao marcar mensagem como lida:", e);
+                                console.error('Erro ao marcar mensagem como lida:', e);
                             }
-                        }, 10); 
+                        }, 10);
                     }
                 }
 
-                const el = renderMessage(message, messageId, collectionName, true);
-                if (el) fragment.appendChild(el);
+                if (change.type === 'added') {
+                    const existing = chatMessages.querySelector(`.message[data-id="${messageId}"]`);
+                    if (!existing) {
+                        const el = renderMessage(message, messageId, collectionName, true);
+                        if (el) chatMessages.appendChild(el);
+                    }
+                } else if (change.type === 'modified') {
+                    const existing = chatMessages.querySelector(`.message[data-id="${messageId}"]`);
+                    if (existing) {
+                        const newEl = renderMessage(message, messageId, collectionName, true);
+                        chatMessages.replaceChild(newEl, existing);
+                    }
+                } else if (change.type === 'removed') {
+                    const existing = chatMessages.querySelector(`.message[data-id="${messageId}"]`);
+                    if (existing) existing.remove();
+                }
             });
-            
-            chatMessages.appendChild(fragment);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            if (shouldStickToBottom || initialLoad) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            initialLoad = false;
         });
 }
 
@@ -533,13 +555,18 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
         let filename = message.text.substring(message.text.lastIndexOf('/') + 1);
         filename = filename.split('?')[0];
         filename = filename.split('_').slice(1).join('_') || "Arquivo";
+
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const linkUrl = message.text;
+        const linkLabel = isMobile ? 'Abrir' : 'Baixar';
+        const linkAttrs = isMobile ? `href="${linkUrl}"` : `href="${linkUrl}" download`;
         
         contentHTML += `
             <div class="file-attachment">
                 <div class="file-icon"><i class="bi bi-file-earmark"></i></div>
                 <div class="file-info">
                     <div class="file-name">${message.description || filename}</div>
-                    <a href="${message.text}" target="_blank" download class="download-link"><i class="bi bi-download"></i> Baixar</a>
+                    <a ${linkAttrs} class="download-link"><i class="bi bi-download"></i> ${linkLabel}</a>
                 </div>
             </div>
         `;
@@ -928,9 +955,6 @@ document.addEventListener('click', (e) => {
     }
     if (chatMenu && e.target !== btnChatMenu && !chatMenu.contains(e.target)) {
         chatMenu.classList.remove('show');
-    }
-    if (emojiPicker && emojiPicker.classList.contains('show') && e.target !== btnEmoji && !emojiPicker.contains(e.target)) {
-        emojiPicker.classList.remove('show');
     }
 });
 
@@ -1532,14 +1556,6 @@ if (saveProfileEdit) {
     });
 }
 
-const btnEmoji = document.getElementById('btn-emoji');
-const emojiPicker = document.getElementById('emoji-picker');
-
-function toggleEmojiPicker() {
-    if (!emojiPicker) return;
-    emojiPicker.classList.toggle('show');
-}
-
 function insertAtCursor(input, text) {
     if (!input) return;
     const start = input.selectionStart || input.value.length;
@@ -1550,21 +1566,6 @@ function insertAtCursor(input, text) {
     input.focus();
 }
 
-if (btnEmoji && emojiPicker) {
-    btnEmoji.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleEmojiPicker();
-    });
-
-    emojiPicker.querySelectorAll('.emoji-option').forEach(span => {
-        span.addEventListener('click', (e) => {
-            const emoji = e.target.textContent;
-            insertAtCursor(messageInput, emoji);
-            emojiPicker.classList.remove('show');
-        });
-    });
-}
 
 const btnSearchMessages = document.getElementById('btn-search-messages');
 let searchTerm = '';
