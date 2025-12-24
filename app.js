@@ -12,6 +12,61 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
+// ========================================
+// NOVA LÓGICA HÍBRIDA DE NOTIFICAÇÕES
+// ========================================
+
+/**
+ * Sincroniza o token de notificação com o Firestore dependendo da plataforma.
+ * @param {Object} user - Objeto do usuário autenticado.
+ */
+async function syncNotificationToken(user) {
+    if (!user) return;
+
+    // 1. Android/iOS: Tenta pegar o token que o capacitor-setup.js guardou
+    const nativeToken = localStorage.getItem('fcm_native_token');
+    
+    if (nativeToken) {
+        await db.collection('users').doc(user.email).update({
+            fcmToken: nativeToken,
+            platform: 'android',
+            fcmTokenUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        console.log('Token Android sincronizado.');
+    } 
+    // 2. Web (PC/Chrome): Tenta o método antigo
+    else if (!window.isCapacitor && 'Notification' in window) {
+        setupWebNotifications(user);
+    }
+}
+
+/**
+ * Configura notificações específicas para navegadores Web.
+ * @param {Object} user - Objeto do usuário autenticado.
+ */
+async function setupWebNotifications(user) {
+    try {
+        if (Notification.permission === 'default') {
+            await Notification.requestPermission();
+        }
+        if (Notification.permission === 'granted') {
+            const messaging = firebase.messaging();
+            const token = await messaging.getToken({
+                vapidKey: 'BEQytQ4RClE8O3WQAUJ_gafF95L2rA-1vSAOyvkLu-8Id8M0hlEMHVyvg7_frwKdT5XTm0a94J1wKLznEtfk4CQ' 
+            });
+            if (token) {
+                await db.collection('users').doc(user.email).update({
+                    fcmToken: token,
+                    platform: 'web',
+                    fcmTokenUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        }
+    } catch (e) { 
+        console.log('Erro Web Notify:', e); 
+    }
+}
+
 const CLOUDINARY_CLOUD_NAME = "dqn28emva";
 const CLOUDINARY_UPLOAD_PRESET = "famly_chat";
 
@@ -57,7 +112,6 @@ const modalNotifications = document.getElementById('modal-notifications');
 const modalPrivacy = document.getElementById('modal-privacy');
 const modalEditMessage = document.getElementById('modal-edit-message');
 
-
 let currentUser = null;
 let currentChatId = null;
 let currentChatPartnerEmail = null;
@@ -72,10 +126,8 @@ let attachmentType = null;
 let selectedMessageDocRef = null;
 let selectedMessageText = "";
 let replyToMessage = null;
-// NOVO: Variável global para armazenar o objeto completo da mensagem
 let selectedMessageData = null; 
 let mutedChats = JSON.parse(localStorage.getItem('mutedChats') || '{}');
-
 
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -115,7 +167,6 @@ function showToast(message, type = 'success') {
     if (!toast || !toastMessage) return;
     
     const icon = toast.querySelector('i');
-    
     toastMessage.textContent = message;
     toast.className = 'toast ' + type;
     if (icon) icon.className = type === 'success' ? 'bi bi-check-circle-fill' : 'bi bi-exclamation-circle-fill';
@@ -188,7 +239,9 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-
+// ========================================
+// AUTH LISTENER (ATUALIZADO)
+// ========================================
 auth.onAuthStateChanged(async (user) => {
     if (!user) {
         if (!window.location.pathname.includes('index.html') && window.location.pathname !== '/') {
@@ -222,6 +275,19 @@ auth.onAuthStateChanged(async (user) => {
     }
     
     updatePresence(true);
+    
+    // Inicia configuração de notificações (Nova Função)
+    syncNotificationToken(user); 
+
+    // Verificar se abriu via notificação
+    const pendingChat = localStorage.getItem('pending_chat_redirect');
+    if (pendingChat) {
+        localStorage.removeItem('pending_chat_redirect');
+        setTimeout(() => {
+            const chatEl = document.querySelector(`.conversation-item[data-id="${pendingChat}"]`);
+            if (chatEl) chatEl.click();
+        }, 1500);
+    }
     
     if (userName) userName.textContent = userData.name || currentUser.displayName || 'Usuário';
     
@@ -595,7 +661,6 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
         </div>
     `;
     
-    // CORREÇÃO: Permite responder a TODAS as mensagens (enviadas e recebidas)
     const openOptions = () => openMessageOptions(message, messageId, collectionName);
 
     messageEl.addEventListener('dblclick', openOptions);
@@ -613,7 +678,6 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
     messageEl.addEventListener('touchend', () => clearTimeout(pressTimer));
     messageEl.addEventListener('touchmove', () => clearTimeout(pressTimer));
     
-    
     if (returnElementOnly) {
         return messageEl;
     }
@@ -621,15 +685,13 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
     chatMessages.appendChild(messageEl);
 }
 
-// CORREÇÃO: Atualizado para receber o objeto completo
 function openMessageOptions(message, messageId, collectionName) {
-    selectedMessageData = message; // Salva o objeto completo
+    selectedMessageData = message;
     selectedMessageDocRef = db.collection(collectionName).doc(currentChatId).collection('messages').doc(messageId);
     selectedMessageText = message.text || '';
     
     const isSent = message.senderEmail === currentUser.email;
     
-    // Mostra/Esconde opções irrelevantes
     document.getElementById('opt-edit').style.display = isSent && message.type === 'text' ? 'flex' : 'none';
     document.getElementById('opt-delete').style.display = isSent ? 'flex' : 'none';
     
@@ -640,7 +702,7 @@ document.getElementById('opt-reply').addEventListener('click', () => {
     closeAllModals();
     if (selectedMessageData) {
         setReplyTo(selectedMessageData); 
-        selectedMessageData = null; // Limpa o objeto após uso
+        selectedMessageData = null;
     }
 });
 
@@ -689,10 +751,8 @@ document.getElementById('save-edit-message').addEventListener('click', async () 
 });
 
 function setReplyTo(message) {
-    // A função setReplyTo já está preparada para receber o objeto message completo
     replyToMessage = message; 
     
-    // Atualiza a pré-visualização para mostrar o texto/mídia corretamente
     let replyText = message.text;
     if (message.type !== 'text') {
         replyText = `[${message.type.charAt(0).toUpperCase() + message.type.slice(1)}] ${message.description || ''}`;
@@ -844,8 +904,7 @@ async function uploadAndSend(file, type, text) {
                 senderName: currentUser.displayName || currentUser.email.split('@')[0],
                 description: text || null,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                // CORREÇÃO (1): Remove a propriedade 'read: false'
-                readBy: [] // Inicializa o array de leitores
+                readBy: []
             };
             
             if (replyToMessage) {
@@ -898,8 +957,7 @@ if (messageForm) {
             senderEmail: currentUser.email,
             senderName: currentUser.displayName || currentUser.email.split('@')[0],
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            // CORREÇÃO (1): Remove a propriedade 'read: false'
-            readBy: [] // Inicializa o array de leitores
+            readBy: []
         };
         
         if (replyToMessage) {
@@ -1523,7 +1581,6 @@ if (saveProfileEdit) {
             await currentUser.updateProfile({ displayName: name });
             
             if (newEmail !== currentUser.email) {
-                // Aviso: Alterar o email requer reautenticação em um app real.
                 await currentUser.updateEmail(newEmail);
             }
             
@@ -1565,7 +1622,6 @@ function insertAtCursor(input, text) {
     input.selectionStart = input.selectionEnd = newPos;
     input.focus();
 }
-
 
 const btnSearchMessages = document.getElementById('btn-search-messages');
 let searchTerm = '';
