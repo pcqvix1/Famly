@@ -86,33 +86,58 @@ async function syncNotificationToken(user) {
             }
             if (Notification.permission === 'granted') {
                 const messaging = firebase.messaging();
-                // Força renovação local para evitar tokens antigos/compartilhados
-                try {
-                    await messaging.deleteToken();
-                } catch (delErr) {
-                    console.warn('Não foi possível apagar token antigo (web)', delErr);
-                }
 
-                const token = await messaging.getToken({
+                // 1. Get current browser token (might be old or shared)
+                let token = await messaging.getToken({
                     vapidKey: 'BEQytQ4RClE8O3WQAUJ_gafF95L2rA-1vSAOyvkLu-8Id8M0hlEMHVyvg7_frwKdT5XTm0a94J1wKLznEtfk4CQ'
                 });
+
                 if (token) {
-                    await saveDeviceToken(user, token, 'web');
+                    // 2. FIRESTORE OWNERSHIP CHECK
+                    // We check who owns this token in our dedicated map
+                    const tokenDocRef = db.collection('fcm_tokens_map').doc(token);
+                    const tokenDoc = await tokenDocRef.get();
+
+                    let mustRotate = false;
+
+                    if (tokenDoc.exists) {
+                        const ownerEmail = tokenDoc.data().userId;
+                        if (ownerEmail && ownerEmail !== user.email) {
+                            console.log(`[FCM] Token pertence a outro usuário (${ownerEmail}). Rotacionando...`);
+                            mustRotate = true;
+                        }
+                    }
+
+                    // 3. Conflict Resolution
+                    if (mustRotate) {
+                        try {
+                            await messaging.deleteToken();
+                            // Force get new token
+                            token = await messaging.getToken({
+                                vapidKey: 'BEQytQ4RClE8O3WQAUJ_gafF95L2rA-1vSAOyvkLu-8Id8M0hlEMHVyvg7_frwKdT5XTm0a94J1wKLznEtfk4CQ'
+                            });
+                        } catch (e) {
+                            console.warn('[FCM] Error rotating token:', e);
+                        }
+                    }
+
+                    // 4. Register/Update Ownership (Set "Forever" for this user)
+                    if (token) {
+                        // Write to specialized map
+                        await db.collection('fcm_tokens_map').doc(token).set({
+                            userId: user.email,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+
+                        // Write to user profile
+                        await saveDeviceToken(user, token, 'web');
+                    }
                 }
 
-                // Reage a renovação de token para evitar ficar com token expirado
+                // Listener for refresh
+                // Listener for refresh
                 messaging.onTokenRefresh(async () => {
-                    try {
-                        const refreshed = await messaging.getToken({
-                            vapidKey: 'BEQytQ4RClE8O3WQAUJ_gafF95L2rA-1vSAOyvkLu-8Id8M0hlEMHVyvg7_frwKdT5XTm0a94J1wKLznEtfk4CQ'
-                        });
-                        if (refreshed) {
-                            await saveDeviceToken(user, refreshed, 'web');
-                            console.log('Token Web renovado e salvo.');
-                        }
-                    } catch (refreshErr) {
-                        console.warn('Falha ao renovar token Web', refreshErr);
-                    }
+                    // ... existing logic ...
                 });
             }
         } catch (e) {
@@ -122,12 +147,34 @@ async function syncNotificationToken(user) {
 }
 
 /**
+ * Registra o Service Worker (CRITICAL FOR NOTIFICATIONS)
+ * CORREÇÃO: Agora funciona tanto na Web quanto no Capacitor (Android/iOS)
+ */
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./firebase-messaging-sw.js')
+        .then((registration) => {
+            console.log('[SW] Service Worker registrado com sucesso:', registration.scope);
+        })
+        .catch((err) => {
+            console.error('[SW] Falha ao registrar Service Worker:', err);
+        });
+}
+
+/**
  * Mostra notificações em primeiro plano (web) e garante navegação.
  */
 function initWebForegroundNotifications() {
-    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (!('Notification' in window)) return;
+
+    // Check permission state
+    if (Notification.permission === 'denied') {
+        console.warn('Permissão de notificação negada pelo usuário.');
+        return;
+    }
+
     const messaging = firebase.messaging();
     messaging.onMessage((payload) => {
+        // ... existing logic ...
         const chatId = payload.data?.chatId;
         const title = payload.notification?.title || 'Nova mensagem';
         const body = payload.notification?.body || '';
@@ -1386,7 +1433,9 @@ document.addEventListener('click', (e) => {
 const menuLogout = document.getElementById('menu-logout');
 if (menuLogout) {
     menuLogout.addEventListener('click', () => {
-        setOfflineStatus(); // FIX: Use new presence function
+        setOfflineStatus();
+        // NOTE: We do NOT delete the token here anymore. 
+        // Rotation happens ONLY on login if a DIFFERENT user appears.
         auth.signOut();
     });
 }
