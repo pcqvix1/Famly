@@ -112,6 +112,27 @@
 
             console.log('✅ Permissão concedida!');
 
+            // Canal de alta prioridade para heads-up (Android)
+            if (Capacitor.getPlatform && Capacitor.getPlatform() === 'android') {
+                try {
+                    if (PushNotifications.createChannel) {
+                        await PushNotifications.createChannel({
+                            id: 'high_messages',
+                            name: 'Mensagens',
+                            description: 'Notificações de mensagens',
+                            importance: 5, // IMPORTANCE_HIGH
+                            visibility: 1, // PUBLIC
+                            sound: 'default',
+                            vibration: true,
+                            lights: true,
+                            lightColor: '#00a884'
+                        });
+                    }
+                } catch (channelErr) {
+                    console.warn('Não foi possível criar canal de alta prioridade', channelErr);
+                }
+            }
+
             // B. Registrar no FCM
             await PushNotifications.register();
             console.log('📡 Registro FCM iniciado...');
@@ -120,10 +141,7 @@
             await PushNotifications.addListener('registration', (token) => {
                 console.log('🎯 FCM Token:', token.value);
                 
-                localStorage.setItem('fcm_native_token', token.value);
-                localStorage.setItem('fcm_token_timestamp', Date.now().toString());
-                
-                // Notificar app.js
+                // Apenas notifica o app.js, que será responsável por salvar o token.
                 window.dispatchEvent(new CustomEvent('native-token-ready', { 
                     detail: { token: token.value } 
                 }));
@@ -180,8 +198,7 @@
     // 3. INICIALIZAÇÃO AUTOMÁTICA
     // ==========================================
 
-    // Iniciar notificações imediatamente
-    await window.initNativeNotifications();
+    // A inicialização será controlada pelo app.js após o login do usuário.
 
     // Sinalizar que está pronto
     window.capacitorReady = Promise.resolve(true);

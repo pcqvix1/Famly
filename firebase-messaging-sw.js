@@ -16,33 +16,45 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
     console.log('Mensagem recebida em background:', payload);
     
-    const notificationTitle = payload.notification.title;
+    const title = payload.notification?.title || payload.data?.title || 'Nova mensagem';
+    const body = payload.notification?.body || payload.data?.body || '';
+    const chatId = payload.data?.chatId;
+
     const notificationOptions = {
-        body: payload.notification.body,
+        body,
         icon: '/icon.png',
         badge: '/badge.png',
-        tag: payload.data.chatId,
-        data: payload.data
+        tag: chatId,
+        data: payload.data,
+        requireInteraction: false,
+        renotify: true,
+        vibrate: [150, 80, 150],
+        actions: chatId ? [{ action: 'open_chat', title: 'Abrir chat' }] : undefined
     };
 
-    return self.registration.showNotification(notificationTitle, notificationOptions);
+    return self.registration.showNotification(title, notificationOptions);
 });
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
-    
+
     const chatId = event.notification.data.chatId;
-    
+    const targetUrl = new URL('/chat.html', self.location.origin).href;
+
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true })
             .then((clientList) => {
-                for (let client of clientList) {
-                    if (client.url.includes('chat.html') && 'focus' in client) {
+                // Tenta focar em uma janela já aberta
+                for (const client of clientList) {
+                    if (client.url.startsWith(targetUrl) && 'focus' in client) {
+                        client.postMessage({ type: 'navigate', chatId: chatId });
                         return client.focus();
                     }
                 }
+                // Se não houver janela aberta, abre uma nova
                 if (clients.openWindow) {
-                    return clients.openWindow(`/chat.html?chatId=${chatId}`);
+                    // Passa o chatId via um parâmetro que o app.js pode ler
+                    return clients.openWindow(`/chat.html#${chatId}`);
                 }
             })
     );

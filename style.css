@@ -58,7 +58,7 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background-color: var(--bg-dark);
     color: var(--text-primary);
-    height: 100vh;
+    height: var(--app-height, 100vh);
     height: -webkit-fill-available;
     overflow: hidden;
     padding-top: var(--safe-area-inset-top);
@@ -92,7 +92,7 @@ body {
 }
 
 .auth-wrapper {
-    min-height: 100vh;
+    min-height: var(--app-height, 100vh);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -246,7 +246,7 @@ body {
 
 .app-container {
     display: flex;
-    height: 100vh;
+    height: var(--app-height, 100vh);
     background: var(--bg-dark);
 }
 

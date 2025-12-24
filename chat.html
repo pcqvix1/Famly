@@ -11,6 +11,14 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="dark">
+    <script>
+        const setAppHeight = () => {
+            const doc = document.documentElement;
+            doc.style.setProperty('--app-height', `${window.innerHeight}px`);
+        };
+        window.addEventListener('resize', setAppHeight);
+        setAppHeight();
+    </script>
     <div class="app-container">
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -105,14 +113,6 @@
                                 <div class="dropdown-item" id="chat-menu-media">
                                     <i class="bi bi-image"></i>
                                     <span>Mídia, links e docs</span>
-                                </div>
-                                <div class="dropdown-item" id="chat-menu-mute">
-                                    <i class="bi bi-bell-slash"></i>
-                                    <span>Silenciar notificações</span>
-                                </div>
-                                <div class="dropdown-item danger" id="chat-menu-clear">
-                                    <i class="bi bi-trash"></i>
-                                    <span>Limpar conversa</span>
                                 </div>
                             </div>
                         </div>
@@ -295,29 +295,6 @@
                 <button class="btn btn-secondary" id="cancel-edit-message">Cancelar</button>
                 <button class="btn btn-success" id="save-edit-message">Salvar</button>
             </div>
-        </div>
-    </div>
-
-    <div class="emoji-picker" id="emoji-picker">
-        <div class="emoji-picker-content">
-            <span class="emoji-option">😀</span>
-            <span class="emoji-option">😁</span>
-            <span class="emoji-option">😂</span>
-            <span class="emoji-option">🤣</span>
-            <span class="emoji-option">😊</span>
-            <span class="emoji-option">😍</span>
-            <span class="emoji-option">😘</span>
-            <span class="emoji-option">😎</span>
-            <span class="emoji-option">🤩</span>
-            <span class="emoji-option">😢</span>
-            <span class="emoji-option">😡</span>
-            <span class="emoji-option">👍</span>
-            <span class="emoji-option">🙏</span>
-            <span class="emoji-option">👏</span>
-            <span class="emoji-option">🔥</span>
-            <span class="emoji-option">🎉</span>
-            <span class="emoji-option"❤️</span>
-            <span class="emoji-option">💔</span>
         </div>
     </div>
 
