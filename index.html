@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="pt">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#0b141a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -10,7 +12,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
     <script type="module" src="capacitor-setup.js"></script>
+    <link rel="icon" href="icon.png" type="image/png">
 </head>
+
 <body data-theme="dark">
     <div class="auth-wrapper">
         <div class="auth-container">
@@ -53,7 +57,8 @@
                 </div>
                 <div class="form-group">
                     <label for="register-password">Senha</label>
-                    <input type="password" id="register-password" placeholder="Mínimo 6 caracteres" required minlength="6">
+                    <input type="password" id="register-password" placeholder="Mínimo 6 caracteres" required
+                        minlength="6">
                 </div>
                 <div id="register-error" class="error-message"></div>
                 <button type="submit" class="btn-primary">
@@ -67,7 +72,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
-    
+
     <script>
         const firebaseConfig = {
             apiKey: "AIzaSyANjWULYll8KXkKaofhZf-_7UdPQjp7Tf0",
@@ -140,9 +145,9 @@
             try {
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const user = userCredential.user;
-                
+
                 await user.updateProfile({ displayName: name });
-                
+
                 await db.collection("users").doc(user.email).set({
                     name: name,
                     email: user.email,
@@ -153,7 +158,7 @@
                     lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
                     isOnline: true
                 });
-                
+
             } catch (error) {
                 errorEl.textContent = getErrorMessage(error.code);
                 errorEl.classList.add('show');
@@ -174,4 +179,5 @@
         }
     </script>
 </body>
+
 </html>

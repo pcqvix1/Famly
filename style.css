@@ -52,6 +52,7 @@
 html {
     height: 100%;
     height: -webkit-fill-available;
+    height: 100dvh;
 }
 
 body {
@@ -60,6 +61,7 @@ body {
     color: var(--text-primary);
     min-height: 100vh;
     min-height: -webkit-fill-available;
+    min-height: 100dvh;
     overflow: hidden;
     padding-top: var(--safe-area-inset-top);
     padding-bottom: var(--safe-area-inset-bottom);
@@ -73,26 +75,56 @@ body {
     position: fixed;
     width: 100%;
     height: 100%;
+    height: 100dvh;
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes slideIn {
-    from { opacity: 0; transform: translateX(-20px); }
-    to { opacity: 1; transform: translateX(0); }
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 @keyframes pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
 }
 
 @keyframes typing {
-    0%, 60%, 100% { transform: translateY(0); }
-    30% { transform: translateY(-5px); }
+
+    0%,
+    60%,
+    100% {
+        transform: translateY(0);
+    }
+
+    30% {
+        transform: translateY(-5px);
+    }
 }
 
 .auth-wrapper {
@@ -512,6 +544,14 @@ body {
     flex-direction: column;
     background: var(--bg-chat);
     position: relative;
+    overflow: hidden;
+}
+
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
 }
 
 .chat-header {
@@ -752,6 +792,7 @@ body {
     padding: 10px 16px;
     background: var(--bg-panel);
     border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 
 .attachment-preview {
@@ -909,8 +950,13 @@ body {
     animation: typing 1.4s infinite;
 }
 
-.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+.typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
 
 .welcome-screen {
     flex: 1;
@@ -1207,11 +1253,11 @@ body {
     transition: transform 0.3s;
 }
 
-.theme-toggle input:checked + label {
+.theme-toggle input:checked+label {
     background: var(--primary);
 }
 
-.theme-toggle input:checked + label::after {
+.theme-toggle input:checked+label::after {
     transform: translateX(24px);
 }
 
@@ -1272,7 +1318,9 @@ body {
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .loading-state {
@@ -1322,14 +1370,17 @@ body {
     -webkit-appearance: none;
     border-radius: 6px;
     overflow: hidden;
-    background: rgba(255,255,255,0.06);
+    background: rgba(255, 255, 255, 0.06);
 }
+
 #upload-progress::-webkit-progress-bar {
-    background: rgba(255,255,255,0.03);
+    background: rgba(255, 255, 255, 0.03);
 }
+
 #upload-progress::-webkit-progress-value {
     background: linear-gradient(90deg, var(--primary-light), var(--primary-dark));
 }
+
 #upload-progress[style*="display: none"] {
     display: none;
 }
@@ -1340,37 +1391,37 @@ body {
         position: absolute;
         z-index: 10;
     }
-    
+
     .sidebar.hidden {
         display: none;
     }
-    
+
     .chat-main {
         width: 100%;
     }
-    
+
     .chat-main.hidden {
         display: none;
     }
-    
+
     .message {
         max-width: 90%;
     }
-    
+
     .chat-input-area {
         padding: 6px 8px;
     }
-    
+
     .chat-input-wrapper {
         gap: 4px;
     }
-    
+
     .chat-input-wrapper .icon-btn,
     .send-btn {
         width: 40px;
         height: 40px;
     }
-    
+
     .btn-back {
         display: flex !important;
     }
@@ -1538,7 +1589,8 @@ body {
     gap: 6px;
 }
 
-.media-grid img, .media-grid video {
+.media-grid img,
+.media-grid video {
     width: 100%;
     height: 80px;
     object-fit: cover;
@@ -1648,6 +1700,11 @@ body {
 }
 
 @keyframes slideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
+    from {
+        transform: translateY(100%);
+    }
+
+    to {
+        transform: translateY(0);
+    }
 }
