@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html lang="pt">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#0b141a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -10,15 +12,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body data-theme="dark">
-    <script>
-        const setAppHeight = () => {
-            const doc = document.documentElement;
-            doc.style.setProperty('--app-height', `${window.innerHeight}px`);
-        };
-        window.addEventListener('resize', setAppHeight);
-        setAppHeight();
-    </script>
+
     <div class="app-container">
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -76,10 +72,17 @@
         <div class="chat-main" id="chat-main">
             <div class="welcome-screen" id="welcome-screen">
                 <svg class="welcome-icon" viewBox="0 0 303 172" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path fill-rule="evenodd" clip-rule="evenodd" d="M229.565 160.229C262.212 149.245 286.931 118.241 283.39 73.4194C278.009 5.31929 212.315 -11.5738 171.472 8.48135C115.79 35.2733 63.7877 -4.6337 36.0274 16.7795C-11.6938 52.9959 -12.5165 111.146 32.9356 150.217C46.3686 161.953 63.3564 172 81.0254 172H218.464C222.721 172 226.441 166.835 229.565 160.229Z" fill="var(--primary)" fill-opacity="0.1"/>
-                    <path d="M150.5 85.5C150.5 97.3741 140.874 107 129 107C117.126 107 107.5 97.3741 107.5 85.5C107.5 73.6259 117.126 64 129 64C140.874 64 150.5 73.6259 150.5 85.5Z" stroke="var(--primary)" stroke-width="3"/>
-                    <path d="M195.5 85.5C195.5 97.3741 185.874 107 174 107C162.126 107 152.5 97.3741 152.5 85.5C152.5 73.6259 162.126 64 174 64C185.874 64 195.5 73.6259 195.5 85.5Z" stroke="var(--primary)" stroke-width="3"/>
-                    <path d="M129 107C129 118.046 137.954 127 149 127H154C165.046 127 174 118.046 174 107" stroke="var(--primary)" stroke-width="3" stroke-linecap="round"/>
+                    <path fill-rule="evenodd" clip-rule="evenodd"
+                        d="M229.565 160.229C262.212 149.245 286.931 118.241 283.39 73.4194C278.009 5.31929 212.315 -11.5738 171.472 8.48135C115.79 35.2733 63.7877 -4.6337 36.0274 16.7795C-11.6938 52.9959 -12.5165 111.146 32.9356 150.217C46.3686 161.953 63.3564 172 81.0254 172H218.464C222.721 172 226.441 166.835 229.565 160.229Z"
+                        fill="var(--primary)" fill-opacity="0.1" />
+                    <path
+                        d="M150.5 85.5C150.5 97.3741 140.874 107 129 107C117.126 107 107.5 97.3741 107.5 85.5C107.5 73.6259 117.126 64 129 64C140.874 64 150.5 73.6259 150.5 85.5Z"
+                        stroke="var(--primary)" stroke-width="3" />
+                    <path
+                        d="M195.5 85.5C195.5 97.3741 185.874 107 174 107C162.126 107 152.5 97.3741 152.5 85.5C152.5 73.6259 162.126 64 174 64C185.874 64 195.5 73.6259 195.5 85.5Z"
+                        stroke="var(--primary)" stroke-width="3" />
+                    <path d="M129 107C129 118.046 137.954 127 149 127H154C165.046 127 174 118.046 174 107"
+                        stroke="var(--primary)" stroke-width="3" stroke-linecap="round" />
                 </svg>
                 <h2>FamlyChat Web</h2>
                 <p>Envie e receba mensagens sem manter seu telefone conectado.</p>
@@ -160,7 +163,8 @@
                             <i class="bi bi-plus"></i>
                         </label>
                         <input type="file" id="file-upload" style="display: none;" accept="*/*">
-                        <textarea class="chat-input" id="message-input" placeholder="Digite uma mensagem" rows="1" autocomplete="off"></textarea>
+                        <textarea class="chat-input" id="message-input" placeholder="Digite uma mensagem" rows="1"
+                            autocomplete="off"></textarea>
                         <button type="button" class="icon-btn" id="btn-record" title="Gravar áudio">
                             <i class="bi bi-mic-fill"></i>
                         </button>
@@ -288,7 +292,8 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <textarea id="edit-message-text" rows="3" style="width: 100%; padding: 12px; background: var(--input-bg); border: none; border-radius: 8px; color: var(--text-primary); resize: none;"></textarea>
+                    <textarea id="edit-message-text" rows="3"
+                        style="width: 100%; padding: 12px; background: var(--input-bg); border: none; border-radius: 8px; color: var(--text-primary); resize: none;"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
@@ -320,7 +325,7 @@
                     <h3 id="contact-info-name">Nome</h3>
                     <p id="contact-info-status">Status</p>
                 </div>
-                
+
                 <div class="settings-list" style="max-height: 250px;">
                     <div id="individual-info-section">
                         <div class="settings-item">
@@ -347,16 +352,19 @@
                                 <div class="settings-item-desc" id="contact-info-type">Grupo</div>
                             </div>
                         </div>
-                        
-                        <div class="settings-item" id="btn-add-group-member" style="display: none; color: var(--primary); cursor: pointer;">
+
+                        <div class="settings-item" id="btn-add-group-member"
+                            style="display: none; color: var(--primary); cursor: pointer;">
                             <i class="bi bi-person-plus-fill" style="color: var(--primary);"></i>
                             <div class="settings-item-info">
-                                <div class="settings-item-title" style="color: var(--primary);">Adicionar participante</div>
+                                <div class="settings-item-title" style="color: var(--primary);">Adicionar participante
+                                </div>
                             </div>
                         </div>
 
                         <div style="padding: 16px 20px 0;">
-                            <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--text-secondary);">Membros do grupo</h4>
+                            <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--text-secondary);">Membros do
+                                grupo</h4>
                             <div id="contact-info-members" class="contacts-list"></div>
                         </div>
                     </div>
@@ -414,7 +422,8 @@
                 </div>
                 <div class="form-group">
                     <label>Nova senha</label>
-                    <input type="password" id="profile-password-input" placeholder="Deixe em branco para manter a atual">
+                    <input type="password" id="profile-password-input"
+                        placeholder="Deixe em branco para manter a atual">
                 </div>
                 <div id="profile-edit-error" class="error-message"></div>
             </div>
@@ -429,18 +438,19 @@
         <i class="bi bi-check-circle-fill"></i>
         <span id="toast-message">Mensagem</span>
     </div>
-    
-        
+
+
     <!-- 2. Firebase (antes do capacitor-setup) -->
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js"></script>
-    
+
     <!-- 3. Capacitor Setup (configuração de plugins) -->
     <script src="capacitor-setup.js"></script>
-    
+
     <!-- 4. App.js (lógica principal) -->
     <script src="app.js"></script>
 </body>
+
 </html>
