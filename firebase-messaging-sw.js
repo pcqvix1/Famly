@@ -15,7 +15,7 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
     console.log('Mensagem recebida em background:', payload);
-    
+
     const title = payload.notification?.title || payload.data?.title || 'Nova mensagem';
     const body = payload.notification?.body || payload.data?.body || '';
     const chatId = payload.data?.chatId;
@@ -23,7 +23,7 @@ messaging.onBackgroundMessage((payload) => {
     const notificationOptions = {
         body,
         icon: '/icon.png',
-        badge: '/badge.png',
+        badge: '/icon.png',
         tag: chatId,
         data: payload.data,
         requireInteraction: false,

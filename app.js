@@ -1008,6 +1008,148 @@ function loadMessages(collectionName) {
         });
 }
 
+// ============================================================================
+// FILE DOWNLOAD AND IMAGE VIEWER HELPERS
+// ============================================================================
+
+/**
+ * Extracts the original filename from a Cloudinary URL
+ * Falls back to description, originalName, or generates a default name
+ */
+function extractFilenameFromUrl(url, description, fileType, originalName) {
+    try {
+        // Cloudinary URL format: .../upload/v{timestamp}/{filename}.{ext}
+        const urlParts = url.split('/');
+        const lastPart = urlParts[urlParts.length - 1];
+
+        // Remove query parameters
+        const cleanPart = lastPart.split('?')[0];
+
+        // If there's an underscore, the part after it is usually the original filename
+        if (cleanPart.includes('_')) {
+            const parts = cleanPart.split('_');
+            parts.shift(); // Remove the first part (timestamp/id)
+            const filename = parts.join('_');
+            if (filename) return decodeURIComponent(filename);
+        }
+
+        // Use originalName if available (Highest Priority)
+        if (originalName) {
+            return originalName;
+        }
+
+        // Use description if available (Secondary, usually for legacy messages)
+        if (description) {
+            // Add extension if not present
+            const hasExtension = description.includes('.');
+            if (!hasExtension && cleanPart.includes('.')) {
+                const ext = cleanPart.split('.').pop();
+                return `${description}.${ext}`;
+            }
+            return description;
+        }
+
+        // Default filename based on type
+        const timestamp = Date.now();
+        const ext = cleanPart.split('.').pop() || 'file';
+        return `${fileType || 'arquivo'}_${timestamp}.${ext}`;
+    } catch (e) {
+        console.error('Error extracting filename:', e);
+        return `arquivo_${Date.now()}.file`;
+    }
+}
+
+/**
+ * Detects if running on mobile/Android
+ */
+function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+/**
+ * Downloads a file with the correct filename
+ * On desktop: forces download
+ * On mobile: opens file (triggers "Abrir com..." dialog)
+ */
+async function downloadFile(url, filename) {
+    try {
+        if (isMobileDevice()) {
+            // On mobile, open in new tab which will trigger "Open with" dialog
+            window.open(url, '_blank');
+        } else {
+            // On desktop, force download with correct filename
+            const response = await fetch(url);
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+
+            // Cleanup
+            setTimeout(() => {
+                window.URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
+            }, 100);
+        }
+    } catch (e) {
+        console.error('Error downloading file:', e);
+        // Fallback: open in new tab
+        window.open(url, '_blank');
+    }
+}
+
+/**
+ * Opens image viewer modal
+ */
+function openImageViewer(imageUrl, filename) {
+    const viewer = document.getElementById('image-viewer');
+    const img = document.getElementById('image-viewer-img');
+    const downloadBtn = document.getElementById('download-image-viewer');
+
+    if (!viewer || !img) return;
+
+    img.src = imageUrl;
+    img.alt = filename || 'Imagem';
+    viewer.classList.add('show');
+
+    // Update download button handler
+    downloadBtn.onclick = () => {
+        const fname = filename || extractFilenameFromUrl(imageUrl, null, 'imagem');
+        downloadFile(imageUrl, fname);
+    };
+}
+
+/**
+ * Closes image viewer modal
+ */
+function closeImageViewer() {
+    const viewer = document.getElementById('image-viewer');
+    if (viewer) viewer.classList.remove('show');
+}
+
+// Setup image viewer event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const closeBtn = document.getElementById('close-image-viewer');
+    const viewer = document.getElementById('image-viewer');
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeImageViewer);
+    }
+
+    if (viewer) {
+        // Click outside image to close
+        viewer.addEventListener('click', (e) => {
+            if (e.target === viewer) {
+                closeImageViewer();
+            }
+        });
+    }
+});
+
 function renderMessage(message, messageId, collectionName, returnElementOnly = false) {
     const isSent = message.senderEmail === currentUser.email;
     const messageEl = document.createElement('div');
@@ -1026,27 +1168,25 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
     }
 
     if (message.type === 'image') {
-        contentHTML += `<a href="${message.text}" target="_blank"><img src="${message.text}" alt="Imagem"></a>`;
+        const filename = extractFilenameFromUrl(message.text, message.description, 'imagem', message.fileName);
+        contentHTML += `<img src="${message.text}" alt="Imagem" class="message-image" data-image-url="${message.text}" data-filename="${filename}">`;
     } else if (message.type === 'video') {
         contentHTML += `<video src="${message.text}" controls></video>`;
     } else if (message.type === 'audio') {
         contentHTML += `<div class="audio-player-wrapper"><audio src="${message.text}" controls></audio></div>`;
     } else if (message.type && message.type !== 'text') {
-        let filename = message.text.substring(message.text.lastIndexOf('/') + 1);
-        filename = filename.split('?')[0];
-        filename = filename.split('_').slice(1).join('_') || "Arquivo";
-
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const linkUrl = message.text;
-        const linkLabel = isMobile ? 'Abrir' : 'Baixar';
-        const linkAttrs = isMobile ? `href="${linkUrl}"` : `href="${linkUrl}" download`;
+        const filename = extractFilenameFromUrl(message.text, message.description, 'arquivo', message.fileName);
+        const displayName = message.description || filename;
+        const buttonLabel = isMobileDevice() ? 'Abrir' : 'Baixar';
 
         contentHTML += `
             <div class="file-attachment">
                 <div class="file-icon"><i class="bi bi-file-earmark"></i></div>
                 <div class="file-info">
-                    <div class="file-name">${message.description || filename}</div>
-                    <a ${linkAttrs} class="download-link"><i class="bi bi-download"></i> ${linkLabel}</a>
+                    <div class="file-name">${displayName}</div>
+                    <button class="download-link" data-file-url="${message.text}" data-filename="${filename}">
+                        <i class="bi bi-download"></i> ${buttonLabel}
+                    </button>
                 </div>
             </div>
         `;
@@ -1091,6 +1231,29 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
     }, { passive: true });
     messageEl.addEventListener('touchend', () => clearTimeout(pressTimer));
     messageEl.addEventListener('touchmove', () => clearTimeout(pressTimer));
+
+    // Add event listeners for images and file downloads
+    const messageImages = messageEl.querySelectorAll('.message-image');
+    messageImages.forEach(img => {
+        img.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent message options from opening
+            const imageUrl = img.dataset.imageUrl;
+            const filename = img.dataset.filename;
+            openImageViewer(imageUrl, filename);
+        });
+        img.style.cursor = 'pointer';
+    });
+
+    const downloadButtons = messageEl.querySelectorAll('.download-link');
+    downloadButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const fileUrl = btn.dataset.fileUrl;
+            const filename = btn.dataset.filename;
+            downloadFile(fileUrl, filename);
+        });
+    });
 
     if (returnElementOnly) {
         return messageEl;
@@ -1314,9 +1477,10 @@ async function uploadAndSend(file, type, text) {
             const messageData = {
                 text: data.secure_url,
                 type: type,
+                fileName: file.name,
                 senderEmail: currentUser.email,
                 senderName: currentUser.displayName || currentUser.email.split('@')[0],
-                description: text || null,
+                description: text || (type === 'file' ? file.name : null),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 readBy: []
             };
@@ -1797,7 +1961,7 @@ if (chatMenuMedia) {
                 .doc(currentChatId)
                 .collection('messages')
                 .orderBy('createdAt', 'desc')
-                .limit(200)
+                .limit(1000)
                 .get();
 
             const photoItems = [];
@@ -1827,11 +1991,20 @@ if (chatMenuMedia) {
 
             if (photoItems.length) {
                 photosEl.innerHTML = photoItems.map(m => {
+                    const filename = extractFilenameFromUrl(m.text, m.description, m.type, m.fileName);
                     if (m.type === 'image') {
-                        return `<a href="${m.text}" target="_blank"><img src="${m.text}" alt="mídia"></a>`;
+                        return `<img src="${m.text}" alt="mídia" class="media-gallery-image" data-image-url="${m.text}" data-filename="${filename}">`;
                     }
                     return `<video src="${m.text}" controls></video>`;
                 }).join('');
+
+                // Add click handlers for gallery images
+                photosEl.querySelectorAll('.media-gallery-image').forEach(img => {
+                    img.addEventListener('click', () => {
+                        openImageViewer(img.dataset.imageUrl, img.dataset.filename);
+                    });
+                    img.style.cursor = 'pointer';
+                });
             } else {
                 photosEl.innerHTML = '<p style="color: var(--text-muted); font-size: 13px;">Nenhuma mídia encontrada.</p>';
             }
@@ -1848,12 +2021,26 @@ if (chatMenuMedia) {
             }
 
             if (docItems.length) {
-                docsEl.innerHTML = docItems.map(m => `
-                    <div class="media-list-item">
-                        <i class="bi bi-file-earmark"></i>
-                        <a href="${m.text}" target="_blank">${escapeHtml(m.description || 'Documento')}</a>
-                    </div>
-                `).join('');
+                docsEl.innerHTML = docItems.map(m => {
+                    const filename = extractFilenameFromUrl(m.text, m.description, 'documento', m.fileName);
+                    const displayName = escapeHtml(m.description || filename);
+                    return `
+                        <div class="media-list-item">
+                            <i class="bi bi-file-earmark"></i>
+                            <span>${displayName}</span>
+                            <button class="media-download-btn" data-file-url="${m.text}" data-filename="${filename}">
+                                <i class="bi bi-download"></i>
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+
+                // Add download handlers
+                docsEl.querySelectorAll('.media-download-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        downloadFile(btn.dataset.fileUrl, btn.dataset.filename);
+                    });
+                });
             } else {
                 docsEl.innerHTML = '<p style="color: var(--text-muted); font-size: 13px;">Nenhum documento encontrado.</p>';
             }

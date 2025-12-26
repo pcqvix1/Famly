@@ -748,6 +748,56 @@ body {
     gap: 12px;
 }
 
+/* Image Viewer / Lightbox */
+.image-viewer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 2000;
+    display: none;
+    flex-direction: column;
+}
+
+.image-viewer-overlay.show {
+    display: flex;
+}
+
+.image-viewer-header {
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.image-viewer-header .icon-btn {
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.image-viewer-header .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.image-viewer-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow: hidden;
+}
+
+.image-viewer-content img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
 .file-icon {
     width: 40px;
     height: 40px;
@@ -772,6 +822,53 @@ body {
 .file-size {
     font-size: 12px;
     color: var(--text-muted);
+}
+
+.download-link {
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.download-link:hover {
+    background: var(--hover-bg);
+    color: var(--primary-dark);
+}
+
+.media-download-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.media-download-btn:hover {
+    background: var(--hover-bg);
+    color: var(--primary);
+}
+
+.media-list-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+}
+
+.media-list-item span {
+    flex: 1;
 }
 
 .date-separator {
@@ -1016,6 +1113,8 @@ body {
     max-height: 80vh;
     overflow: hidden;
     animation: fadeIn 0.3s ease;
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-header {
@@ -1034,6 +1133,9 @@ body {
 .modal-body {
     padding: 20px;
     overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    /* Critical for scrolling inside flex items */
 }
 
 .modal-footer {
@@ -1199,10 +1301,54 @@ body {
 }
 
 /* Limites de rolagem em seções de mídia */
-.media-grid,
+.media-grid {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    /* space for scrollbar */
+    margin-bottom: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--text-muted) transparent;
+    max-height: none;
+    /* Let it grow horizontally, height controlled by items */
+    white-space: nowrap;
+}
+
+.media-grid::-webkit-scrollbar {
+    height: 4px;
+    /* Horizontal scrollbar height */
+}
+
+.media-grid::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border-radius: 2px;
+}
+
+/* Handle both direct videos and anchor wrappers for images */
+.media-grid>* {
+    flex-shrink: 0;
+    width: 100px;
+    height: 100px;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    display: block;
+    /* Ensure anchors behave as blocks */
+}
+
+.media-grid img,
+.media-grid video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
 .media-list {
-    max-height: 220px;
-    overflow-y: auto;
+    /* Remove fixed height to allow page to scroll vertically */
+    max-height: none;
+    overflow-y: visible;
 }
 
 
@@ -1582,20 +1728,7 @@ body {
     background: var(--hover-bg);
 }
 
-/* Media viewer */
-.media-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-    gap: 6px;
-}
-
-.media-grid img,
-.media-grid video {
-    width: 100%;
-    height: 80px;
-    object-fit: cover;
-    border-radius: 6px;
-}
+/* Media viewer styles are now defined with the scrolling classes above */
 
 .media-list {
     display: flex;
