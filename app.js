@@ -1,3 +1,18 @@
+// REMOVED IMPORTS to support "Plain JS" usage without a bundler.
+// We will access plugins via Capacitor.Plugins global object.
+const FilePicker = window.Capacitor?.Plugins?.FilePicker;
+const FileOpener = window.Capacitor?.Plugins?.FileOpener;
+const Filesystem = window.Capacitor?.Plugins?.Filesystem;
+// Note: 'Directory' enum needs to be manually defined if not imported
+const Directory = {
+    Documents: 'DOCUMENTS',
+    Data: 'DATA',
+    Library: 'LIBRARY',
+    Cache: 'CACHE',
+    External: 'EXTERNAL',
+    ExternalStorage: 'EXTERNAL_STORAGE'
+};
+
 const firebaseConfig = {
     apiKey: "AIzaSyANjWULYll8KXkKaofhZf-_7UdPQjp7Tf0",
     authDomain: "famly-8f61d.firebaseapp.com",
@@ -1033,12 +1048,7 @@ function extractFilenameFromUrl(url, description, fileType, originalName) {
             if (filename) return decodeURIComponent(filename);
         }
 
-        // Use originalName if available (Highest Priority)
-        if (originalName) {
-            return originalName;
-        }
-
-        // Use description if available (Secondary, usually for legacy messages)
+        // Use description if available
         if (description) {
             // Add extension if not present
             const hasExtension = description.includes('.');
@@ -1047,6 +1057,11 @@ function extractFilenameFromUrl(url, description, fileType, originalName) {
                 return `${description}.${ext}`;
             }
             return description;
+        }
+
+        // Use originalName if available
+        if (originalName) {
+            return originalName;
         }
 
         // Default filename based on type
@@ -1073,11 +1088,56 @@ function isMobileDevice() {
  */
 async function downloadFile(url, filename) {
     try {
-        if (isMobileDevice()) {
-            // On mobile, open in new tab which will trigger "Open with" dialog
+        if (window.isCapacitor) {
+            // ========================
+            // CAPACITOR NATIVE SAVE & OPEN
+            // ========================
+            showToast('Baixando...');
+
+            // 1. Download File to cache or documents
+            // We use fetch to get the blob, then write to filesystem
+            const response = await fetch(url);
+            const blob = await response.blob();
+
+            // Convert Blob to Base64
+            const convertBlobToBase64 = (blob) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = reject;
+                reader.onload = () => {
+                    resolve(reader.result);
+                };
+                reader.readAsDataURL(blob);
+            });
+
+            const base64Data = await convertBlobToBase64(blob);
+            // Remove header "data:application/pdf;base64,"
+            const base64Content = base64Data.split(',')[1];
+
+            // Save
+            const savedFile = await Filesystem.writeFile({
+                path: filename,
+                data: base64Content,
+                directory: Directory.Cache, // Changed to Cache to avoid permission issues on Android 11+
+                recursive: true
+            });
+
+            showToast('Arquivo salvo! Abrindo...');
+
+            // 2. Open File
+            try {
+                await FileOpener.openFile({
+                    path: savedFile.uri,
+                });
+            } catch (openErr) {
+                console.error('Error opening file:', openErr);
+                showToast('Arquivo salvo em Documentos', 'success');
+            }
+
+        } else if (isMobileDevice()) {
+            // Mobile Web
             window.open(url, '_blank');
         } else {
-            // On desktop, force download with correct filename
+            // Desktop Web
             const response = await fetch(url);
             const blob = await response.blob();
             const blobUrl = window.URL.createObjectURL(blob);
@@ -1089,16 +1149,16 @@ async function downloadFile(url, filename) {
             document.body.appendChild(a);
             a.click();
 
-            // Cleanup
             setTimeout(() => {
                 window.URL.revokeObjectURL(blobUrl);
                 document.body.removeChild(a);
             }, 100);
         }
     } catch (e) {
-        console.error('Error downloading file:', e);
-        // Fallback: open in new tab
-        window.open(url, '_blank');
+        console.error('Error downloading/opening file:', e);
+        showToast('Erro ao abrir arquivo', 'error');
+        // Fallback
+        if (!window.isCapacitor) window.open(url, '_blank');
     }
 }
 
@@ -1388,6 +1448,124 @@ if (btnRemoveAttachment) {
     btnRemoveAttachment.addEventListener('click', clearAttachmentPreview);
 }
 
+
+// ============================================================================
+// ATTACHMENT MENU LOGIC
+// ============================================================================
+
+const btnAttachment = document.getElementById('btn-attachment');
+const attachmentMenu = document.getElementById('attachment-menu');
+const fileUploadPhoto = document.getElementById('file-upload-photo');
+const fileUploadDoc = document.getElementById('file-upload-doc');
+
+// Toggle Menu
+if (btnAttachment) {
+    btnAttachment.addEventListener('click', (e) => {
+        e.stopPropagation();
+        attachmentMenu.classList.toggle('show');
+    });
+}
+
+// Close menu when clicking outside
+document.addEventListener('click', (e) => {
+    if (attachmentMenu && attachmentMenu.classList.contains('show')) {
+        if (!btnAttachment.contains(e.target) && !attachmentMenu.contains(e.target)) {
+            attachmentMenu.classList.remove('show');
+        }
+    }
+});
+
+// Option: Photo/Video
+document.getElementById('attach-photo').addEventListener('click', async () => {
+    attachmentMenu.classList.remove('show');
+    if (window.isCapacitor) {
+        await pickMediaNative();
+    } else {
+        fileUploadPhoto.click();
+    }
+});
+
+// Option: Document
+document.getElementById('attach-doc').addEventListener('click', async () => {
+    attachmentMenu.classList.remove('show');
+    if (window.isCapacitor) {
+        await pickFilesNative();
+    } else {
+        fileUploadDoc.click();
+    }
+});
+
+// Web Input Listeners
+if (fileUploadPhoto) {
+    fileUploadPhoto.addEventListener('change', (e) => handleWebFileUpload(e, 'media'));
+}
+if (fileUploadDoc) {
+    fileUploadDoc.addEventListener('change', (e) => handleWebFileUpload(e, 'file'));
+}
+
+// ============================================================================
+// CAPACITOR PICKER LOGIC
+// ============================================================================
+
+async function pickMediaNative() {
+    try {
+        const result = await FilePicker.pickImages({
+            limit: 1,
+            readData: true // Important to get base64/data to upload
+        });
+
+        const file = result.files[0];
+        if (!file) return;
+
+        // Convert base64 to Blob/File for upload
+        const blob = await fetch(`data:${file.mimeType};base64,${file.data}`).then(res => res.blob());
+        const nativeFile = new File([blob], file.name || `image_${Date.now()}`, { type: file.mimeType });
+
+        displayAttachmentPreview(nativeFile, 'image'); // Simplified assumption for image
+
+    } catch (error) {
+        if (error.message !== 'pickImages canceled') {
+            // Fallback for videos or mixed content if pickImages is strictly images
+            // Try pickMedia or generic picker if needed. 
+            // For now, let's assume pickImages handles what we need or we fall back.
+            console.error("Error picking media:", error);
+        }
+    }
+}
+
+async function pickFilesNative() {
+    try {
+        const result = await FilePicker.pickFiles({
+            limit: 1,
+            readData: true
+        });
+
+        const file = result.files[0];
+        if (!file) return;
+
+        const blob = await fetch(`data:${file.mimeType};base64,${file.data}`).then(res => res.blob());
+        const nativeFile = new File([blob], file.name, { type: file.mimeType });
+
+        const type = getResourceType(nativeFile.type) || 'file'; // 'image', 'video' or 'raw'
+        displayAttachmentPreview(nativeFile, type);
+    } catch (error) {
+        console.error("Error picking file:", error);
+    }
+}
+
+function handleWebFileUpload(event, source) {
+    const files = event.target.files;
+    if (files.length > 0) {
+        const file = files[0];
+        const fileType = getResourceType(file.type) || 'file';
+        displayAttachmentPreview(file, fileType);
+    }
+    event.target.value = '';
+}
+
+
+// REPLACING OLD LISTENER
+/*
 if (fileUpload) {
     fileUpload.addEventListener('change', (e) => {
         const files = e.target.files;
@@ -1399,6 +1577,8 @@ if (fileUpload) {
         fileUpload.value = '';
     });
 }
+*/
+
 
 if (btnRecord) {
     btnRecord.addEventListener('click', () => {

@@ -160,10 +160,26 @@
                     </div>
 
                     <form class="chat-input-wrapper" id="message-form">
-                        <label class="icon-btn" for="file-upload" title="Anexar arquivo">
-                            <i class="bi bi-plus"></i>
-                        </label>
-                        <input type="file" id="file-upload" style="display: none;" accept="*/*">
+                        <div style="position: relative;">
+                            <button type="button" class="icon-btn" id="btn-attachment" title="Anexar">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                            <div class="dropdown-menu attachment-menu" id="attachment-menu"
+                                style="bottom: 100%; left: 0; margin-bottom: 10px;">
+                                <div class="dropdown-item" id="attach-photo">
+                                    <i class="bi bi-image"></i>
+                                    <span>Fotos e Vídeos</span>
+                                </div>
+                                <div class="dropdown-item" id="attach-doc">
+                                    <i class="bi bi-file-earmark-text"></i>
+                                    <span>Documento</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Inputs ocultos para Web -->
+                        <input type="file" id="file-upload-photo" style="display: none;" accept="image/*,video/*">
+                        <input type="file" id="file-upload-doc" style="display: none;" accept="*/*">
+
                         <textarea class="chat-input" id="message-input" placeholder="Digite uma mensagem" rows="1"
                             autocomplete="off"></textarea>
                         <button type="button" class="icon-btn" id="btn-record" title="Gravar áudio">

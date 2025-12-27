@@ -1599,6 +1599,18 @@ body {
     color: #a8e6cf;
 }
 
+/* CUSTOM MENU FIX */
+.attachment-menu {
+    top: auto !important;
+    bottom: 120% !important;
+    /* Move it up a bit more */
+    left: 0 !important;
+    right: auto !important;
+    margin-bottom: 0;
+    min-width: 180px;
+    transform-origin: bottom left;
+}
+
 .message.received .message-text-content a {
     color: var(--primary);
 }
