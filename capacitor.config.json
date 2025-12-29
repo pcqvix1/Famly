@@ -15,7 +15,7 @@
     "cleartext": false
   },
   "android": {
-    "allowMixedContent": false,
+    "allowMixedContent": true,
     "backgroundColor": "#0b141a",
     "buildOptions": {
       "keystorePath": "",
@@ -45,7 +45,13 @@
     },
     "StatusBar": {
       "style": "dark",
-      "backgroundColor": "#0b141a"
+      "backgroundColor": "#0b141a",
+      "overlay": false
+    },
+    "LiveUpdate": {
+      "appId": "f8b75fc5-30e2-4f61-b58d-7b8f3df16e1b",
+      "autoDeleteBundles": true,
+      "enabled": true
     }
   }
 }

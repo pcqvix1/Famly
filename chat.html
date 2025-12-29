@@ -198,7 +198,7 @@
                 <button class="icon-btn" id="btn-close-settings">
                     <i class="bi bi-arrow-left"></i>
                 </button>
-                <h2>Configurações</h2>
+                <h2>Config</h2>
             </div>
             <div class="settings-profile">
                 <div class="settings-avatar">
@@ -219,6 +219,24 @@
                     <div class="settings-item-info">
                         <div class="settings-item-title">Dados da conta</div>
                         <div class="settings-item-desc">Foto, nome, email e senha</div>
+                    </div>
+                </div>
+
+                <!-- LIVE UPDATE: Verificar atualizações -->
+                <div class="settings-item" id="settings-check-updates" style="display: none;">
+                    <i class="bi bi-arrow-clockwise"></i>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Verificar atualizações</div>
+                        <div class="settings-item-desc">Buscar novas versões do app</div>
+                    </div>
+                </div>
+
+                <!-- LIVE UPDATE: Versão do app -->
+                <div class="settings-item" id="settings-app-version" style="display: none;">
+                    <i class="bi bi-info-circle"></i>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Versão do app</div>
+                        <div class="settings-item-desc" id="app-version-text">Carregando...</div>
                     </div>
                 </div>
             </div>
@@ -480,8 +498,67 @@
     <!-- 3. Capacitor Setup (configuração de plugins) -->
     <script src="capacitor-setup.js"></script>
 
+    <!-- 3.5. Live Update Manager -->
+    <script src="live-update.js"></script>
+
     <!-- 4. App.js (lógica principal) -->
     <script src="app.js"></script>
+
+    <!-- 5. Live Update UI Handler -->
+    <script>
+        // ==========================================
+        // LIVE UPDATE UI CONFIGURATION
+        // ==========================================
+        (function () {
+            // Só executa em ambiente nativo
+            if (!window.isCapacitor || !window.LiveUpdateManager) {
+                console.log('Live Update UI: Desabilitado (web)');
+                return;
+            }
+
+            const settingsCheckUpdates = document.getElementById('settings-check-updates');
+            const settingsAppVersion = document.getElementById('settings-app-version');
+
+            // Mostra opções de atualização
+            if (settingsCheckUpdates) {
+                settingsCheckUpdates.style.display = 'flex';
+
+                settingsCheckUpdates.addEventListener('click', async () => {
+                    try {
+                        await window.LiveUpdateManager.checkForUpdates();
+                    } catch (error) {
+                        console.error('Erro ao verificar atualizações:', error);
+                    }
+                });
+            }
+
+            // Mostra versão atual
+            if (settingsAppVersion) {
+                settingsAppVersion.style.display = 'flex';
+
+                window.LiveUpdateManager.getCurrentVersion().then(bundle => {
+                    const versionText = document.getElementById('app-version-text');
+                    if (versionText) {
+                        // Mostra versão de forma amigável
+                        const version = bundle.version || '1.0.0';
+                        const bundleId = bundle.id || 'original';
+                        versionText.textContent = `${version}`;
+
+                        // Se quiser mostrar mais detalhes:
+                        // versionText.textContent = `${version} (${bundleId})`;
+                    }
+                }).catch(error => {
+                    console.error('Erro ao obter versão:', error);
+                    const versionText = document.getElementById('app-version-text');
+                    if (versionText) {
+                        versionText.textContent = '1.0.0';
+                    }
+                });
+            }
+
+            console.log('✅ Live Update UI pronto!');
+        })();
+    </script>
 </body>
 
 </html>
