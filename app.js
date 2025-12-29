@@ -2029,7 +2029,7 @@ if (confirmCreateGroup) {
             await db.collection('groups').doc(groupId).set({
                 name: groupName,
                 members: sortedMembers,
-                admin: currentUser.email,
+                admins: [currentUser.email], // Changed from admin to admins array
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
 
@@ -2163,7 +2163,8 @@ if (chatMenuInfo) {
                 if (doc.exists) {
                     const data = doc.data();
                     nameEl.textContent = data.name || 'Grupo';
-                    statusEl.textContent = `Admin: ${data.admin || ''}`;
+                    const isAdmin = data.admins && data.admins.includes(currentUser.email);
+                    statusEl.textContent = `${data.members.length} membros`;
                     emailEl.textContent = '-';
                     lastSeenEl.textContent = '';
                     avatarEl.innerHTML = getInitials(data.name || 'Grupo');
@@ -2180,10 +2181,29 @@ if (chatMenuInfo) {
                             const userDoc = await db.collection('users').doc(email).get();
                             const userData = userDoc.data() || {};
                             const displayName = userData.name || email;
+                            const isMemberAdmin = data.admins && data.admins.includes(email);
+
+                            let memberActionsHTML = '';
+                            if (isAdmin && email !== currentUser.email) {
+                                memberActionsHTML = `
+                                    <div class="member-actions">
+                                        <i class="bi bi-three-dots-vertical"></i>
+                                        <div class="dropdown-menu">
+                                            ${!isMemberAdmin ? `<div class="dropdown-item" onclick="promoteToAdmin('${currentChatId}', '${email}')">Promover a admin</div>` : ''}
+                                            <div class="dropdown-item danger" onclick="removeGroupMember('${currentChatId}', '${email}')">Remover do grupo</div>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+
                             membersList.innerHTML += `
                                 <div class="contact-list-item">
                                     <div class="avatar small">${getInitials(displayName)}</div>
-                                    <div>${displayName}<br><span style="font-size: 12px; color: var(--text-muted);">${email}</span></div>
+                                    <div>
+                                        ${displayName}<br><span style="font-size: 12px; color: var(--text-muted);">${email}</span>
+                                        ${isMemberAdmin ? '<span class="badge admin-badge">Admin</span>' : ''}
+                                    </div>
+                                    ${memberActionsHTML}
                                 </div>
                             `;
                         }
@@ -2529,6 +2549,52 @@ if (btnSearchMessages) {
         lastFoundIndex = -1;
         highlightAndScrollToNext();
     });
+}
+
+async function removeGroupMember(groupId, memberEmail) {
+    const groupRef = db.collection('groups').doc(groupId);
+    const groupDoc = await groupRef.get();
+    if (!groupDoc.exists) return;
+
+    const groupData = groupDoc.data();
+    const isAdmin = groupData.admins && groupData.admins.includes(currentUser.email);
+
+    if (!isAdmin) {
+        showToast('Você não tem permissão para remover membros.', 'error');
+        return;
+    }
+
+    if (groupData.admins.includes(memberEmail) && groupData.admins.length === 1) {
+        showToast('Não é possível remover o único administrador do grupo.', 'error');
+        return;
+    }
+
+    await groupRef.update({
+        members: firebase.firestore.FieldValue.arrayRemove(memberEmail),
+        admins: firebase.firestore.FieldValue.arrayRemove(memberEmail)
+    });
+
+    showToast('Membro removido do grupo.', 'success');
+}
+
+async function promoteToAdmin(groupId, memberEmail) {
+    const groupRef = db.collection('groups').doc(groupId);
+    const groupDoc = await groupRef.get();
+    if (!groupDoc.exists) return;
+
+    const groupData = groupDoc.data();
+    const isAdmin = groupData.admins && groupData.admins.includes(currentUser.email);
+
+    if (!isAdmin) {
+        showToast('Você não tem permissão para promover membros.', 'error');
+        return;
+    }
+
+    await groupRef.update({
+        admins: firebase.firestore.FieldValue.arrayUnion(memberEmail)
+    });
+
+    showToast('Membro promovido a administrador.', 'success');
 }
 
 // ===========================================
