@@ -479,7 +479,7 @@ function toggleMobileView(showChat) {
 function updatePresenceHeartbeat() {
     if (!currentUser) return;
 
-    // Atualiza apenas o timestamp ('lastSeen'). 
+    // Atualiza apenas o timestamp ('lastSeen').
     // O status 'online' será derivado dinamicamente por quem lê (diff < threshold).
     db.collection('users').doc(currentUser.email).update({
         lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
@@ -697,175 +697,257 @@ auth.onAuthStateChanged(async (user) => {
     });
 });
 
-let contactPresenceListeners = [];
+// ============================================================================
+// NOVA LÓGICA DE CONVERSAS (MAIS EFICIENTE)
+// ============================================================================
+let contactPresenceListeners = {};
+let conversationsLoaded = false;
+let groupListeners = {}; // To manage group snapshot listeners
 
-async function loadConversations() {
-    if (!conversationList) return;
-    conversationList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Carregando...</p></div>';
+/**
+ * Atualiza apenas os elementos da UI de presença para um contato específico.
+ * @param {Object} contactData - Dados do contato do Firestore.
+ */
+function updateContactPresenceUI(contactData) {
+    if (!contactData || !contactData.email || !currentUser) return;
 
-    contactPresenceListeners.forEach(unsub => unsub());
-    contactPresenceListeners = [];
+    const chatId = getChatId(currentUser.email, contactData.email);
+    const item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
+    if (!item) return;
 
-    db.collection('users').doc(currentUser.email).onSnapshot(async (doc) => {
-        const userData = doc.data();
-        const contacts = userData?.contacts || [];
+    const presence = getPresenceState(contactData);
+    const statusLabel = presence.isOnline ? 'online' : presence.label;
 
-        contactPresenceListeners.forEach(unsub => unsub());
-        contactPresenceListeners = [];
+    const onlineIndicatorEl = item.querySelector('.online-indicator');
+    if (presence.isOnline) {
+        if (!onlineIndicatorEl) {
+            const wrapper = item.querySelector('.avatar-wrapper');
+            if (wrapper) {
+                const dot = document.createElement('div');
+                dot.className = 'online-indicator';
+                wrapper.appendChild(dot);
+            }
+        }
+    } else {
+        if (onlineIndicatorEl) {
+            onlineIndicatorEl.remove();
+        }
+    }
 
-        const groupsSnapshot = await db.collection('groups')
-            .where('members', 'array-contains', currentUser.email)
-            .get();
+    const previewEl = item.querySelector('.conversation-preview');
+    // Only update status if there isn't a latest message preview
+    if (previewEl && !previewEl.dataset.latestMessage) {
+        previewEl.textContent = statusLabel;
+    }
+}
 
-        const groups = [];
-        groupsSnapshot.forEach((doc) => {
-            groups.push({ id: doc.id, ...doc.data() });
+/**
+ * Renderiza um único item de contato na lista de conversas.
+ * @param {Object} contact - Dados do contato.
+ */
+function renderContact(contact) {
+    const chatId = getChatId(currentUser.email, contact.email);
+    let item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
+
+    if (!item) {
+        item = document.createElement('div');
+        item.className = 'conversation-item';
+        item.dataset.email = contact.email;
+        item.dataset.name = contact.name;
+        item.dataset.type = 'chat';
+        item.dataset.id = chatId;
+        conversationList.appendChild(item);
+
+        item.addEventListener('click', () => {
+            document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            startChat(contact.email, contact.name);
         });
+    }
 
-        const now = new Date();
-        const seenIds = new Set();
+    const initials = getInitials(contact.name);
+    const avatarHTML = contact.photoURL ? `<img src="${contact.photoURL}" alt="${contact.name}">` : initials;
 
-        function renderConversationList(contactsData) {
-            // Remove estado de carregamento, se ainda existir
-            const loadingEl = conversationList.querySelector('.loading-state');
-            if (loadingEl) loadingEl.remove();
+    item.innerHTML = `
+        <div class="avatar-wrapper">
+            <div class="avatar">${avatarHTML}</div>
+        </div>
+        <div class="conversation-info">
+            <div class="conversation-name">${escapeHtml(contact.name)}</div>
+            <div class="conversation-preview"></div>
+        </div>
+    `;
 
-            // Atualiza/insere contatos
-            for (const contact of contactsData) {
-                const chatId = getChatId(currentUser.email, contact.email);
-                const initials = getInitials(contact.name);
+    updateContactPresenceUI(contact);
 
-                // USANDO A NOVA LÓGICA CENTRALIZADA
-                const presence = getPresenceState(contact);
-                const isReallyOnline = presence.isOnline;
-                const statusLabel = presence.isOnline ? 'Online' : presence.label;
+    // Gerencia listener de presença individual
+    if (contactPresenceListeners[contact.email]) {
+        contactPresenceListeners[contact.email]();
+    }
+    contactPresenceListeners[contact.email] = db.collection('users').doc(contact.email).onSnapshot(updateContactPresenceUI);
+}
 
-                let item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
-                if (!item) {
-                    item = document.createElement('div');
-                    item.className = 'conversation-item';
-                    item.dataset.email = contact.email;
-                    item.dataset.name = contact.name;
-                    item.dataset.type = 'chat';
-                    item.dataset.id = chatId;
-                    item.innerHTML = `
-                        <div class="avatar-wrapper">
-                            <div class="avatar">${contact.photoURL ? `<img src="${contact.photoURL}">` : initials}</div>
-                            ${isReallyOnline ? '<div class="online-indicator"></div>' : ''}
-                        </div>
-                        <div class="conversation-info">
-                            <div class="conversation-name">${contact.name}</div>
-                            <div class="conversation-preview">${statusLabel}</div>
-                        </div>
-                    `;
-                    conversationList.appendChild(item);
-                    item.addEventListener('click', () => {
-                        document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
-                        item.classList.add('active');
-                        startChat(contact.email, contact.name);
-                    });
-                } else {
-                    const onlineDot = item.querySelector('.online-indicator');
-                    if (onlineDot) onlineDot.remove();
-                    const avatarWrapper = item.querySelector('.avatar-wrapper');
-                    if (isReallyOnline && avatarWrapper) {
-                        const dot = document.createElement('div');
-                        dot.className = 'online-indicator';
-                        avatarWrapper.appendChild(dot);
-                    }
-                    const nameEl = item.querySelector('.conversation-name');
-                    const prevEl = item.querySelector('.conversation-preview');
-                    if (nameEl) nameEl.textContent = contact.name;
-                    if (prevEl) prevEl.textContent = statusLabel;
-                }
-                seenIds.add(chatId);
+/**
+ * Remove um contato da UI e seu listener.
+ * @param {string} email - Email do contato a ser removido.
+ */
+function removeContact(email) {
+    const chatId = getChatId(currentUser.email, email);
+    const item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
+    if (item) {
+        item.remove();
+    }
+    if (contactPresenceListeners[email]) {
+        contactPresenceListeners[email]();
+        delete contactPresenceListeners[email];
+    }
+}
+
+/**
+ * Renderiza um grupo na lista de conversas.
+ * @param {Object} group - Dados do grupo.
+ */
+function renderGroup(group) {
+    const groupId = group.id;
+    let item = conversationList.querySelector(`.conversation-item[data-id="${groupId}"]`);
+    const initials = getInitials(group.name);
+
+    if (!item) {
+        item = document.createElement('div');
+        item.className = 'conversation-item';
+        item.dataset.name = group.name;
+        item.dataset.type = 'group';
+        item.dataset.id = groupId;
+
+        item.innerHTML = `
+            <div class="avatar group-avatar">${initials}</div>
+            <div class="conversation-info">
+                <div class="conversation-name">
+                    ${escapeHtml(group.name)}
+                    <span class="badge">Grupo</span>
+                </div>
+                <div class="conversation-preview">${group.members.length} membros</div>
+            </div>
+        `;
+        conversationList.appendChild(item);
+        item.addEventListener('click', () => {
+            document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            startGroupChat(groupId, group.name);
+        });
+    } else {
+        // Update existing item
+        const nameEl = item.querySelector('.conversation-name');
+        if (nameEl) nameEl.firstChild.textContent = `\n                    ${escapeHtml(group.name)}\n                    `;
+        const previewEl = item.querySelector('.conversation-preview');
+        if (previewEl) previewEl.textContent = `${group.members.length} membros`;
+    }
+
+    // Attach listener for group metadata changes (name, members)
+    if (groupListeners[groupId]) {
+        groupListeners[groupId]();
+    }
+    groupListeners[groupId] = db.collection('groups').doc(groupId).onSnapshot(doc => {
+        if (doc.exists) {
+            renderGroup({ id: doc.id, ...doc.data() });
+        } else {
+            // Remove group from UI if deleted
+            const groupItem = conversationList.querySelector(`.conversation-item[data-id="${doc.id}"]`);
+            if (groupItem) groupItem.remove();
+            if (groupListeners[doc.id]) {
+                groupListeners[doc.id]();
+                delete groupListeners[doc.id];
             }
-
-            // Atualiza/insere grupos
-            for (const group of groups) {
-                const groupId = group.id;
-                const initials = getInitials(group.name);
-                let item = conversationList.querySelector(`.conversation-item[data-id="${groupId}"]`);
-                if (!item) {
-                    item = document.createElement('div');
-                    item.className = 'conversation-item';
-                    item.dataset.name = group.name;
-                    item.dataset.type = 'group';
-                    item.dataset.id = groupId;
-                    item.innerHTML = `
-                        <div class="avatar group-avatar">${initials}</div>
-                        <div class="conversation-info">
-                            <div class="conversation-name">
-                                ${group.name}
-                                <span class="badge">Grupo</span>
-                            </div>
-                            <div class="conversation-preview">${group.members.length} membros</div>
-                        </div>
-                    `;
-                    conversationList.appendChild(item);
-                    item.addEventListener('click', () => {
-                        document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
-                        item.classList.add('active');
-                        startGroupChat(groupId, group.name);
-                    });
-                } else {
-                    const nameEl = item.querySelector('.conversation-name');
-                    const prevEl = item.querySelector('.conversation-preview');
-                    if (nameEl) nameEl.firstChild.textContent = `\n                                ${group.name}\n                                `;
-                    if (prevEl) prevEl.textContent = `${group.members.length} membros`;
-                }
-                seenIds.add(groupId);
-            }
-
-            // Remove conversas que não estão mais na lista
-            conversationList.querySelectorAll('.conversation-item').forEach(item => {
-                if (!seenIds.has(item.dataset.id)) {
-                    item.remove();
-                }
-            });
-
-            if (seenIds.size === 0) {
-                conversationList.innerHTML = `
-                    <div class="empty-state">
-                        <i class="bi bi-chat-dots"></i>
-                        <h3>Nenhuma conversa</h3>
-                        <p>Adicione contatos ou crie um grupo para começar a conversar</p>
-                    </div>
-                `;
-            }
-        }
-
-        const contactsData = [];
-
-        if (contacts.length === 0 && groups.length === 0) {
-            renderConversationList([]);
-            return;
-        }
-
-        if (contacts.length === 0) {
-            renderConversationList([]);
-            return;
-        }
-
-        for (const contactEmail of contacts) {
-            const unsub = db.collection('users').doc(contactEmail).onSnapshot((contactDoc) => {
-                if (contactDoc.exists) {
-                    const contact = contactDoc.data();
-                    const existingIndex = contactsData.findIndex(c => c.email === contactEmail);
-                    if (existingIndex >= 0) {
-                        contactsData[existingIndex] = contact;
-                    } else {
-                        contactsData.push(contact);
-                    }
-                    renderConversationList(contactsData);
-                }
-            }, (e) => {
-                console.error('Error loading contact:', e);
-            });
-            contactPresenceListeners.push(unsub);
         }
     });
 }
+
+/**
+ * Carrega e gerencia a lista de conversas de forma eficiente.
+ */
+async function loadConversations() {
+    if (!conversationList || !currentUser) return;
+
+    if (!conversationsLoaded) {
+        conversationList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Carregando...</p></div>';
+    }
+
+    let currentContactEmails = new Set(Object.keys(contactPresenceListeners));
+
+    // Listener para MUDANÇAS NA LISTA DE CONTATOS do usuário
+    db.collection('users').doc(currentUser.email).onSnapshot(async (userDoc) => {
+        if (!userDoc.exists) return;
+        const userData = userDoc.data();
+        const newContactEmails = new Set(userData.contacts || []);
+
+        // Adicionar novos contatos
+        for (const email of newContactEmails) {
+            if (!currentContactEmails.has(email)) {
+                const contactDoc = await db.collection('users').doc(email).get();
+                if (contactDoc.exists) {
+                    renderContact(contactDoc.data());
+                }
+            }
+        }
+
+        // Remover contatos antigos
+        for (const email of currentContactEmails) {
+            if (!newContactEmails.has(email)) {
+                removeContact(email);
+            }
+        }
+
+        currentContactEmails = newContactEmails;
+        checkEmptyState();
+    });
+
+    // Listener para GRUPOS
+    db.collection('groups').where('members', 'array-contains', currentUser.email)
+        .onSnapshot(snapshot => {
+            snapshot.docChanges().forEach(change => {
+                const group = { id: change.doc.id, ...change.doc.data() };
+                if (change.type === 'added' || change.type === 'modified') {
+                    renderGroup(group);
+                } else if (change.type === 'removed') {
+                    const item = conversationList.querySelector(`.conversation-item[data-id="${group.id}"]`);
+                    if (item) item.remove();
+                    if (groupListeners[group.id]) {
+                        groupListeners[group.id]();
+                        delete groupListeners[group.id];
+                    }
+                }
+            });
+            checkEmptyState();
+        });
+
+    if (!conversationsLoaded) {
+        const loadingEl = conversationList.querySelector('.loading-state');
+        if (loadingEl) loadingEl.remove();
+        conversationsLoaded = true;
+        // Dispara evento para notificar que a lista inicial carregou
+        window.dispatchEvent(new CustomEvent('conversations-loaded'));
+    }
+}
+
+function checkEmptyState() {
+    // A little delay to ensure DOM updates are processed
+    setTimeout(() => {
+        if (conversationList.children.length === 0 ||
+            (conversationList.children.length === 1 && conversationList.querySelector('.loading-state'))) {
+            conversationList.innerHTML = `
+                <div class="empty-state">
+                    <i class="bi bi-chat-dots"></i>
+                    <h3>Nenhuma conversa</h3>
+                    <p>Adicione contatos ou crie um grupo para começar a conversar</p>
+                </div>
+            `;
+        } else {
+            const emptyEl = conversationList.querySelector('.empty-state');
+            if (emptyEl) emptyEl.remove();
+        }
+    }, 100);
+}
+
 
 function attachConversationListeners() {
     document.querySelectorAll('.conversation-item').forEach(item => {
@@ -1526,7 +1608,7 @@ async function pickMediaNative() {
     } catch (error) {
         if (error.message !== 'pickImages canceled') {
             // Fallback for videos or mixed content if pickImages is strictly images
-            // Try pickMedia or generic picker if needed. 
+            // Try pickMedia or generic picker if needed.
             // For now, let's assume pickImages handles what we need or we fall back.
             console.error("Error picking media:", error);
         }
@@ -1778,7 +1860,7 @@ const menuLogout = document.getElementById('menu-logout');
 if (menuLogout) {
     menuLogout.addEventListener('click', () => {
         setOfflineStatus();
-        // NOTE: We do NOT delete the token here anymore. 
+        // NOTE: We do NOT delete the token here anymore.
         // Rotation happens ONLY on login if a DIFFERENT user appears.
         auth.signOut();
     });
