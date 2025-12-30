@@ -109,6 +109,9 @@
                         <div class="chat-header-status" id="chat-status">offline</div>
                     </div>
                     <div class="chat-header-actions">
+                        <button class="icon-btn" id="btn-voice-call" title="Chamada de voz" style="display: none;">
+                            <i class="bi bi-telephone-fill"></i>
+                        </button>
                         <div style="position: relative;">
                             <button class="icon-btn" id="btn-chat-menu" title="Mais opções">
                                 <i class="bi bi-three-dots-vertical"></i>
@@ -500,6 +503,64 @@
         <span id="toast-message">Mensagem</span>
     </div>
 
+    <!-- Voice Call Overlay -->
+    <div class="voice-call-overlay" id="voice-call-overlay">
+        <div class="voice-call-container">
+            <div class="voice-call-avatar">
+                <div class="avatar large" id="call-avatar">
+                    <i class="bi bi-person-fill"></i>
+                </div>
+                <div class="call-status-ring"></div>
+            </div>
+
+            <h3 id="call-contact-name">Nome do Contato</h3>
+            <p class="call-status-text" id="call-status-text">Chamando...</p>
+
+            <div class="call-timer" id="call-timer" style="display: none;">00:00</div>
+
+            <div class="call-actions">
+                <button class="call-btn mute-btn" id="btn-mute-call" title="Silenciar">
+                    <i class="bi bi-mic-fill"></i>
+                </button>
+                <button class="call-btn end-call-btn" id="btn-end-call" title="Encerrar">
+                    <i class="bi bi-telephone-x-fill"></i>
+                </button>
+                <button class="call-btn speaker-btn" id="btn-speaker" title="Alto-falante">
+                    <i class="bi bi-volume-up-fill"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Incoming Call Notification -->
+    <div class="incoming-call-notification" id="incoming-call-notification">
+        <div class="incoming-call-content">
+            <div class="incoming-call-header">
+                <div class="avatar" id="incoming-call-avatar">
+                    <i class="bi bi-person-fill"></i>
+                </div>
+                <div class="incoming-call-info">
+                    <h4 id="incoming-call-name">Nome do Contato</h4>
+                    <p>Chamada de voz...</p>
+                </div>
+            </div>
+            <div class="incoming-call-actions">
+                <button class="call-btn decline-btn" id="btn-decline-call">
+                    <i class="bi bi-telephone-x-fill"></i>
+                </button>
+                <button class="call-btn accept-btn" id="btn-accept-call">
+                    <i class="bi bi-telephone-fill"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden audio element for ringtone -->
+    <audio id="ringtone" loop>
+        <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTcIGWi77eeeTRAMUKfj8LZjHAY4ktfzzHksBSR3x/DdkEAKFF606+uoVRQKRp/g8r5sIQUrgezy2Yk3CBlou+3nnk0QDFCn4/C2YxwGOJLX88x5LAUkd8fw3ZBBDFao5O+lUhMJRZ7f8r1rIAUsf87y2og2BxlqvO3onEwPDE+m4u+0ZBsGN5DX8s15LAUjd8fw3I8/" title="Ringtone">
+    </audio>
+    <audio id="remote-audio" autoplay></audio>
+
 
     <!-- 2. Firebase (antes do capacitor-setup) -->
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
@@ -512,6 +573,9 @@
 
     <!-- 3.5. Live Update Manager -->
     <script src="live-update.js"></script>
+
+    <!-- 3.7. WebRTC Call Manager -->
+    <script src="webrtc-call.js"></script>
 
     <!-- 4. App.js (lógica principal) -->
     <script src="app.js"></script>
