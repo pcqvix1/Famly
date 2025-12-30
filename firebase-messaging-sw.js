@@ -1,3 +1,4 @@
+// firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
@@ -12,6 +13,52 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
+
+// Cache de recursos estáticos
+const CACHE_NAME = 'famlychat-v1';
+const urlsToCache = [
+    '/',
+    '/index.html',
+    '/chat.html',
+    '/style.css',
+    '/app.js',
+    '/capacitor-setup.js',
+    '/worker.js',
+    '/icon.png',
+    '/live-update.js'
+];
+
+self.addEventListener('install', (event) => {
+    event.waitUntil(
+        caches.open(CACHE_NAME)
+            .then(cache => cache.addAll(urlsToCache))
+    );
+});
+
+self.addEventListener('fetch', (event) => {
+    event.respondWith(
+        caches.match(event.request)
+            .then(response => {
+                if (response) {
+                    return response; // Serve do cache
+                }
+                return fetch(event.request)
+                    .then(response => {
+                        // Não cachear requests não sucedidos ou de API
+                        if (!response || response.status !== 200 || response.type !== 'basic') {
+                            return response;
+                        }
+                        
+                        const responseToCache = response.clone();
+                        caches.open(CACHE_NAME)
+                            .then(cache => {
+                                cache.put(event.request, responseToCache);
+                            });
+                        return response;
+                    });
+            })
+    );
+});
 
 messaging.onBackgroundMessage((payload) => {
     console.log('Mensagem recebida em background:', payload);

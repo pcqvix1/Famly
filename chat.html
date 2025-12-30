@@ -12,6 +12,10 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="icon.png" type="image/png">
+    <link rel="preload" href="style.css" as="style">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" as="style">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://api.cloudinary.com">
 </head>
 
 <body data-theme="dark">
@@ -117,6 +121,14 @@
                                 <div class="dropdown-item" id="chat-menu-media">
                                     <i class="bi bi-image"></i>
                                     <span>Mídia, links e docs</span>
+                                </div>
+                                <div class="dropdown-item" id="chat-menu-block">
+                                    <i class="bi bi-person-x"></i>
+                                    <span>Bloquear contato</span>
+                                </div>
+                                <div class="dropdown-item danger" id="chat-menu-leave">
+                                    <i class="bi bi-box-arrow-right"></i>
+                                    <span>Sair do grupo</span>
                                 </div>
                             </div>
                         </div>

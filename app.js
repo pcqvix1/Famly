@@ -306,6 +306,15 @@ const ONLINE_THRESHOLD = 15000;   // 15s (tolerância para latência)
 let audioStream = null;
 let mutedChats = {};
 
+// ================== NOVAS VARIÁVEIS PARA PERFORMANCE ==================
+const CONVERSATIONS_BATCH_SIZE = 20;
+const MESSAGES_BATCH_SIZE = 50;
+let allConversations = [];
+let visibleConversations = new Set();
+let scrollDebounceTimer = null;
+let userCache = new Map();
+let avatarCache = new Map();
+
 function saveMutedChats() {
     localStorage.setItem('mutedChats', JSON.stringify(mutedChats));
 }
@@ -574,6 +583,160 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ================== FUNÇÕES DE PERFORMANCE ==================
+
+function debounce(func, wait, immediate = false) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            timeout = null;
+            if (!immediate) func(...args);
+        };
+        const callNow = immediate && !timeout;
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+        if (callNow) func(...args);
+    };
+}
+
+function throttle(func, limit) {
+    let inThrottle;
+    return function executedFunction(...args) {
+        if (!inThrottle) {
+            func(...args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+async function getCachedUserData(email) {
+    if (userCache.has(email)) {
+        return userCache.get(email);
+    }
+    
+    const doc = await db.collection('users').doc(email).get();
+    if (doc.exists) {
+        const data = doc.data();
+        userCache.set(email, data);
+        return data;
+    }
+    return null;
+}
+
+function getCachedAvatar(email, name) {
+    const key = email || name;
+    if (avatarCache.has(key)) {
+        return avatarCache.get(key);
+    }
+    
+    const initials = getInitials(name || email);
+    avatarCache.set(key, initials);
+    return initials;
+}
+
+function smoothScrollToBottom(element, duration = 300) {
+    const start = element.scrollTop;
+    const end = element.scrollHeight - element.clientHeight;
+    const change = end - start;
+    const startTime = performance.now();
+    
+    function animateScroll(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeInOut = progress < 0.5 
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+            
+        element.scrollTop = start + change * easeInOut;
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateScroll);
+        }
+    }
+    
+    requestAnimationFrame(animateScroll);
+}
+
+async function compressImage(file, maxWidth = 1200, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) {
+            resolve(file);
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                canvas.toBlob(
+                    (blob) => {
+                        const compressedFile = new File([blob], file.name, {
+                            type: 'image/jpeg',
+                            lastModified: Date.now()
+                        });
+                        resolve(compressedFile);
+                    },
+                    'image/jpeg',
+                    quality
+                );
+            };
+            img.onerror = reject;
+        };
+        reader.onerror = reject;
+    });
+}
+
+function lazyLoadImages(container) {
+    if (!('IntersectionObserver' in window)) {
+        // Fallback: carrega todas as imagens
+        const images = container.querySelectorAll('img[data-src]');
+        images.forEach(img => {
+            img.src = img.dataset.src;
+            img.classList.remove('lazy');
+        });
+        return;
+    }
+    
+    const lazyImages = container.querySelectorAll('img.lazy');
+    const imageObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                img.src = img.dataset.src;
+                img.classList.remove('lazy');
+                observer.unobserve(img);
+            }
+        });
+    });
+    
+    lazyImages.forEach(img => imageObserver.observe(img));
+}
+
+// Inicializar observer global
+document.addEventListener('DOMContentLoaded', () => {
+    lazyLoadImages(document.body);
+});
+
+// ================== FIM DAS FUNÇÕES DE PERFORMANCE ==================
+
 // Inicializa hooks de presença uma única vez
 initPresenceHooks();
 
@@ -610,6 +773,8 @@ auth.onAuthStateChanged(async (user) => {
             isOnline: true
         };
         await db.collection('users').doc(currentUser.email).set(userData);
+    } else {
+        userCache.set(currentUser.email, userData);
     }
 
     startPresenceTracking();
@@ -697,175 +862,262 @@ auth.onAuthStateChanged(async (user) => {
     });
 });
 
-let contactPresenceListeners = [];
+// ============================================================================
+// NOVA LÓGICA DE CONVERSAS (MAIS EFICIENTE)
+// ============================================================================
+let contactPresenceListeners = {};
+let conversationsLoaded = false;
+let groupListeners = {}; // To manage group snapshot listeners
 
-async function loadConversations() {
-    if (!conversationList) return;
-    conversationList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Carregando...</p></div>';
+/**
+ * Atualiza apenas os elementos da UI de presença para um contato específico.
+ * @param {Object} contactData - Dados do contato do Firestore.
+ */
+function updateContactPresenceUI(contactData) {
+    if (!contactData || !contactData.email || !currentUser) return;
 
-    contactPresenceListeners.forEach(unsub => unsub());
-    contactPresenceListeners = [];
+    const chatId = getChatId(currentUser.email, contactData.email);
+    const item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
+    if (!item) return;
 
-    db.collection('users').doc(currentUser.email).onSnapshot(async (doc) => {
-        const userData = doc.data();
-        const contacts = userData?.contacts || [];
+    const presence = getPresenceState(contactData);
+    const statusLabel = presence.isOnline ? 'online' : presence.label;
 
-        contactPresenceListeners.forEach(unsub => unsub());
-        contactPresenceListeners = [];
+    const onlineIndicatorEl = item.querySelector('.online-indicator');
+    if (presence.isOnline) {
+        if (!onlineIndicatorEl) {
+            const wrapper = item.querySelector('.avatar-wrapper');
+            if (wrapper) {
+                const dot = document.createElement('div');
+                dot.className = 'online-indicator';
+                wrapper.appendChild(dot);
+            }
+        }
+    } else {
+        if (onlineIndicatorEl) {
+            onlineIndicatorEl.remove();
+        }
+    }
 
-        const groupsSnapshot = await db.collection('groups')
-            .where('members', 'array-contains', currentUser.email)
-            .get();
+    const previewEl = item.querySelector('.conversation-preview');
+    // Only update status if there isn't a latest message preview
+    if (previewEl && !previewEl.dataset.latestMessage) {
+        previewEl.textContent = statusLabel;
+    }
+}
 
-        const groups = [];
-        groupsSnapshot.forEach((doc) => {
-            groups.push({ id: doc.id, ...doc.data() });
+/**
+ * Renderiza um único item de contato na lista de conversas.
+ * @param {Object} contact - Dados do contato.
+ */
+function renderContact(contact) {
+    const chatId = getChatId(currentUser.email, contact.email);
+    let item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
+
+    if (!item) {
+        item = document.createElement('div');
+        item.className = 'conversation-item';
+        item.dataset.email = contact.email;
+        item.dataset.name = contact.name;
+        item.dataset.type = 'chat';
+        item.dataset.id = chatId;
+        conversationList.appendChild(item);
+
+        item.addEventListener('click', () => {
+            document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            startChat(contact.email, contact.name);
         });
+    }
 
-        const now = new Date();
-        const seenIds = new Set();
+    const initials = getCachedAvatar(contact.email, contact.name);
+    const avatarHTML = contact.photoURL ? `<img src="${contact.photoURL}" alt="${contact.name}">` : initials;
 
-        function renderConversationList(contactsData) {
-            // Remove estado de carregamento, se ainda existir
-            const loadingEl = conversationList.querySelector('.loading-state');
-            if (loadingEl) loadingEl.remove();
+    item.innerHTML = `
+        <div class="avatar-wrapper">
+            <div class="avatar">${avatarHTML}</div>
+        </div>
+        <div class="conversation-info">
+            <div class="conversation-name">${escapeHtml(contact.name)}</div>
+            <div class="conversation-preview"></div>
+        </div>
+    `;
 
-            // Atualiza/insere contatos
-            for (const contact of contactsData) {
-                const chatId = getChatId(currentUser.email, contact.email);
-                const initials = getInitials(contact.name);
+    updateContactPresenceUI(contact);
 
-                // USANDO A NOVA LÓGICA CENTRALIZADA
-                const presence = getPresenceState(contact);
-                const isReallyOnline = presence.isOnline;
-                const statusLabel = presence.isOnline ? 'Online' : presence.label;
+    // Gerencia listener de presença individual
+    if (contactPresenceListeners[contact.email]) {
+        contactPresenceListeners[contact.email]();
+    }
+    contactPresenceListeners[contact.email] = db.collection('users').doc(contact.email).onSnapshot(doc => {
+        if (!doc.exists) return;
+        const data = { email: doc.id, ...doc.data() };
+        userCache.set(doc.id, data);
+        updateContactPresenceUI(data);
+    });
+}
 
-                let item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
-                if (!item) {
-                    item = document.createElement('div');
-                    item.className = 'conversation-item';
-                    item.dataset.email = contact.email;
-                    item.dataset.name = contact.name;
-                    item.dataset.type = 'chat';
-                    item.dataset.id = chatId;
-                    item.innerHTML = `
-                        <div class="avatar-wrapper">
-                            <div class="avatar">${contact.photoURL ? `<img src="${contact.photoURL}">` : initials}</div>
-                            ${isReallyOnline ? '<div class="online-indicator"></div>' : ''}
-                        </div>
-                        <div class="conversation-info">
-                            <div class="conversation-name">${contact.name}</div>
-                            <div class="conversation-preview">${statusLabel}</div>
-                        </div>
-                    `;
-                    conversationList.appendChild(item);
-                    item.addEventListener('click', () => {
-                        document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
-                        item.classList.add('active');
-                        startChat(contact.email, contact.name);
-                    });
-                } else {
-                    const onlineDot = item.querySelector('.online-indicator');
-                    if (onlineDot) onlineDot.remove();
-                    const avatarWrapper = item.querySelector('.avatar-wrapper');
-                    if (isReallyOnline && avatarWrapper) {
-                        const dot = document.createElement('div');
-                        dot.className = 'online-indicator';
-                        avatarWrapper.appendChild(dot);
-                    }
-                    const nameEl = item.querySelector('.conversation-name');
-                    const prevEl = item.querySelector('.conversation-preview');
-                    if (nameEl) nameEl.textContent = contact.name;
-                    if (prevEl) prevEl.textContent = statusLabel;
-                }
-                seenIds.add(chatId);
+/**
+ * Remove um contato da UI e seu listener.
+ * @param {string} email - Email do contato a ser removido.
+ */
+function removeContact(email) {
+    const chatId = getChatId(currentUser.email, email);
+    const item = conversationList.querySelector(`.conversation-item[data-id="${chatId}"]`);
+    if (item) {
+        item.remove();
+    }
+    if (contactPresenceListeners[email]) {
+        contactPresenceListeners[email]();
+        delete contactPresenceListeners[email];
+    }
+}
+
+/**
+ * Renderiza um grupo na lista de conversas.
+ * @param {Object} group - Dados do grupo.
+ */
+function renderGroup(group) {
+    const groupId = group.id;
+    let item = conversationList.querySelector(`.conversation-item[data-id="${groupId}"]`);
+    const initials = getCachedAvatar(null, group.name);
+
+    if (!item) {
+        item = document.createElement('div');
+        item.className = 'conversation-item';
+        item.dataset.name = group.name;
+        item.dataset.type = 'group';
+        item.dataset.id = groupId;
+
+        item.innerHTML = `
+            <div class="avatar group-avatar">${initials}</div>
+            <div class="conversation-info">
+                <div class="conversation-name">
+                    ${escapeHtml(group.name)}
+                    <span class="badge">Grupo</span>
+                </div>
+                <div class="conversation-preview">${group.members.length} membros</div>
+            </div>
+        `;
+        conversationList.appendChild(item);
+        item.addEventListener('click', () => {
+            document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            startGroupChat(groupId, group.name);
+        });
+    } else {
+        // Update existing item
+        const nameEl = item.querySelector('.conversation-name');
+        if (nameEl) nameEl.firstChild.textContent = `\n                    ${escapeHtml(group.name)}\n                    `;
+        const previewEl = item.querySelector('.conversation-preview');
+        if (previewEl) previewEl.textContent = `${group.members.length} membros`;
+    }
+
+    // Attach listener for group metadata changes (name, members)
+    if (groupListeners[groupId]) {
+        groupListeners[groupId]();
+    }
+    groupListeners[groupId] = db.collection('groups').doc(groupId).onSnapshot(doc => {
+        if (doc.exists) {
+            renderGroup({ id: doc.id, ...doc.data() });
+        } else {
+            // Remove group from UI if deleted
+            const groupItem = conversationList.querySelector(`.conversation-item[data-id="${doc.id}"]`);
+            if (groupItem) groupItem.remove();
+            if (groupListeners[doc.id]) {
+                groupListeners[doc.id]();
+                delete groupListeners[doc.id];
             }
-
-            // Atualiza/insere grupos
-            for (const group of groups) {
-                const groupId = group.id;
-                const initials = getInitials(group.name);
-                let item = conversationList.querySelector(`.conversation-item[data-id="${groupId}"]`);
-                if (!item) {
-                    item = document.createElement('div');
-                    item.className = 'conversation-item';
-                    item.dataset.name = group.name;
-                    item.dataset.type = 'group';
-                    item.dataset.id = groupId;
-                    item.innerHTML = `
-                        <div class="avatar group-avatar">${initials}</div>
-                        <div class="conversation-info">
-                            <div class="conversation-name">
-                                ${group.name}
-                                <span class="badge">Grupo</span>
-                            </div>
-                            <div class="conversation-preview">${group.members.length} membros</div>
-                        </div>
-                    `;
-                    conversationList.appendChild(item);
-                    item.addEventListener('click', () => {
-                        document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
-                        item.classList.add('active');
-                        startGroupChat(groupId, group.name);
-                    });
-                } else {
-                    const nameEl = item.querySelector('.conversation-name');
-                    const prevEl = item.querySelector('.conversation-preview');
-                    if (nameEl) nameEl.firstChild.textContent = `\n                                ${group.name}\n                                `;
-                    if (prevEl) prevEl.textContent = `${group.members.length} membros`;
-                }
-                seenIds.add(groupId);
-            }
-
-            // Remove conversas que não estão mais na lista
-            conversationList.querySelectorAll('.conversation-item').forEach(item => {
-                if (!seenIds.has(item.dataset.id)) {
-                    item.remove();
-                }
-            });
-
-            if (seenIds.size === 0) {
-                conversationList.innerHTML = `
-                    <div class="empty-state">
-                        <i class="bi bi-chat-dots"></i>
-                        <h3>Nenhuma conversa</h3>
-                        <p>Adicione contatos ou crie um grupo para começar a conversar</p>
-                    </div>
-                `;
-            }
-        }
-
-        const contactsData = [];
-
-        if (contacts.length === 0 && groups.length === 0) {
-            renderConversationList([]);
-            return;
-        }
-
-        if (contacts.length === 0) {
-            renderConversationList([]);
-            return;
-        }
-
-        for (const contactEmail of contacts) {
-            const unsub = db.collection('users').doc(contactEmail).onSnapshot((contactDoc) => {
-                if (contactDoc.exists) {
-                    const contact = contactDoc.data();
-                    const existingIndex = contactsData.findIndex(c => c.email === contactEmail);
-                    if (existingIndex >= 0) {
-                        contactsData[existingIndex] = contact;
-                    } else {
-                        contactsData.push(contact);
-                    }
-                    renderConversationList(contactsData);
-                }
-            }, (e) => {
-                console.error('Error loading contact:', e);
-            });
-            contactPresenceListeners.push(unsub);
         }
     });
 }
+
+/**
+ * Carrega e gerencia a lista de conversas de forma eficiente.
+ */
+async function loadConversations() {
+    if (!conversationList || !currentUser) return;
+
+    if (!conversationsLoaded) {
+        conversationList.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Carregando...</p></div>';
+    }
+
+    let currentContactEmails = new Set(Object.keys(contactPresenceListeners));
+
+    // Listener para MUDANÇAS NA LISTA DE CONTATOS do usuário
+    db.collection('users').doc(currentUser.email).onSnapshot(async (userDoc) => {
+        if (!userDoc.exists) return;
+        const userData = userDoc.data();
+        const newContactEmails = new Set(userData.contacts || []);
+
+        // Adicionar novos contatos
+        for (const email of newContactEmails) {
+            if (!currentContactEmails.has(email)) {
+                const contactDoc = await db.collection('users').doc(email).get();
+                if (contactDoc.exists) {
+                    renderContact(contactDoc.data());
+                }
+            }
+        }
+
+        // Remover contatos antigos
+        for (const email of currentContactEmails) {
+            if (!newContactEmails.has(email)) {
+                removeContact(email);
+            }
+        }
+
+        currentContactEmails = newContactEmails;
+        checkEmptyState();
+    });
+
+    // Listener para GRUPOS
+    db.collection('groups').where('members', 'array-contains', currentUser.email)
+        .onSnapshot(snapshot => {
+            snapshot.docChanges().forEach(change => {
+                const group = { id: change.doc.id, ...change.doc.data() };
+                if (change.type === 'added' || change.type === 'modified') {
+                    renderGroup(group);
+                } else if (change.type === 'removed') {
+                    const item = conversationList.querySelector(`.conversation-item[data-id="${group.id}"]`);
+                    if (item) item.remove();
+                    if (groupListeners[group.id]) {
+                        groupListeners[group.id]();
+                        delete groupListeners[group.id];
+                    }
+                }
+            });
+            checkEmptyState();
+        });
+
+    if (!conversationsLoaded) {
+        const loadingEl = conversationList.querySelector('.loading-state');
+        if (loadingEl) loadingEl.remove();
+        conversationsLoaded = true;
+        // Dispara evento para notificar que a lista inicial carregou
+        window.dispatchEvent(new CustomEvent('conversations-loaded'));
+    }
+}
+
+function checkEmptyState() {
+    // A little delay to ensure DOM updates are processed
+    setTimeout(() => {
+        if (conversationList.children.length === 0 ||
+            (conversationList.children.length === 1 && conversationList.querySelector('.loading-state'))) {
+            conversationList.innerHTML = `
+                <div class="empty-state">
+                    <i class="bi bi-chat-dots"></i>
+                    <h3>Nenhuma conversa</h3>
+                    <p>Adicione contatos ou crie um grupo para começar a conversar</p>
+                </div>
+            `;
+        } else {
+            const emptyEl = conversationList.querySelector('.empty-state');
+            if (emptyEl) emptyEl.remove();
+        }
+    }, 100);
+}
+
 
 function attachConversationListeners() {
     document.querySelectorAll('.conversation-item').forEach(item => {
@@ -897,17 +1149,20 @@ async function startChat(partnerEmail, partnerName) {
 
     chatName.textContent = partnerName;
 
-    const contactDoc = await db.collection('users').doc(partnerEmail).get();
-    const contact = contactDoc.data();
+    const contactData = await getCachedUserData(partnerEmail);
+    const contact = contactData || {};
 
     if (contact?.photoURL) {
         chatAvatar.innerHTML = `<img src="${contact.photoURL}">`;
     } else {
-        chatAvatar.innerHTML = getInitials(partnerName);
+        chatAvatar.innerHTML = getCachedAvatar(partnerEmail, partnerName);
     }
 
     unsubscribeFromPresence = db.collection('users').doc(partnerEmail).onSnapshot((doc) => {
         const data = doc.data();
+        if (data) {
+            userCache.set(partnerEmail, data);
+        }
 
         // USANDO A MESMA LÓGICA DO LIST LIST
         const presence = getPresenceState(data);
@@ -943,7 +1198,7 @@ async function startGroupChat(groupId, groupName) {
     currentChatType = 'group';
 
     chatName.textContent = groupName;
-    chatAvatar.innerHTML = getInitials(groupName);
+    chatAvatar.innerHTML = getCachedAvatar(null, groupName);
     chatAvatar.classList.add('group-avatar');
     chatStatus.textContent = 'Grupo';
     chatStatus.classList.remove('online');
@@ -960,67 +1215,162 @@ async function startGroupChat(groupId, groupName) {
     updateChatMenuMuteLabel();
 }
 
+// ================== NOVA FUNÇÃO loadMessages COM VIRTUALIZAÇÃO ==================
 function loadMessages(collectionName) {
     chatMessages.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
-
+    
+    let lastVisible = null;
+    let isLoadingMore = false;
+    let hasMore = true;
     let initialLoad = true;
-
+    
+    const loadMoreMessages = async () => {
+        if (isLoadingMore || !hasMore) return;
+        isLoadingMore = true;
+        
+        let query = db.collection(collectionName)
+            .doc(currentChatId)
+            .collection('messages')
+            .orderBy('createdAt', 'desc')
+            .limit(MESSAGES_BATCH_SIZE);
+            
+        if (lastVisible) {
+            query = query.startAfter(lastVisible);
+        }
+        
+        try {
+            const snapshot = await query.get();
+            
+            if (snapshot.empty) {
+                hasMore = false;
+                isLoadingMore = false;
+                return;
+            }
+            
+            lastVisible = snapshot.docs[snapshot.docs.length - 1];
+            
+            const messages = [];
+            snapshot.forEach(doc => {
+                messages.push({
+                    id: doc.id,
+                    ...doc.data(),
+                    // Converter timestamp para Date se necessário
+                    createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : doc.data().createdAt
+                });
+            });
+            
+            // Ordenar do mais antigo para o mais novo
+            messages.reverse();
+            
+            // Renderizar em batch
+            renderMessagesBatch(messages, collectionName);
+            
+            if (initialLoad) {
+                initialLoad = false;
+                // Scroll para o final após carregar inicial
+                setTimeout(() => {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }, 100);
+            }
+            
+            if (snapshot.size < MESSAGES_BATCH_SIZE) {
+                hasMore = false;
+            }
+        } catch (e) {
+            console.error('Erro ao carregar mais mensagens:', e);
+        } finally {
+            isLoadingMore = false;
+        }
+    };
+    
+    // Carregar inicial
+    loadMoreMessages();
+    
+    // Infinite scroll
+    const scrollHandler = throttle(() => {
+        const scrollTop = chatMessages.scrollTop;
+        const threshold = 300; // pixels do topo para carregar mais
+        
+        if (scrollTop < threshold && hasMore && !isLoadingMore) {
+            loadMoreMessages();
+        }
+    }, 200);
+    
+    chatMessages.addEventListener('scroll', scrollHandler);
+    
+    // Listener para novas mensagens em tempo real (apenas últimas)
     unsubscribeFromMessages = db.collection(collectionName)
         .doc(currentChatId)
         .collection('messages')
-        .orderBy('createdAt', 'asc')
+        .orderBy('createdAt', 'desc')
+        .limit(1)
         .onSnapshot((snapshot) => {
-            const shouldStickToBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
-
-            if (initialLoad) {
-                chatMessages.innerHTML = '';
-            }
-
             snapshot.docChanges().forEach((change) => {
-                const doc = change.doc;
-                const message = doc.data();
-                const messageId = doc.id;
-
-                if (message.senderEmail !== currentUser.email) {
-                    const readBy = message.readBy || [];
-                    if (!readBy.includes(currentUser.email)) {
-                        setTimeout(async () => {
-                            try {
-                                const messagesRef = db.collection(collectionName).doc(currentChatId).collection('messages');
-                                await messagesRef.doc(messageId).update({
-                                    readBy: firebase.firestore.FieldValue.arrayUnion(currentUser.email)
-                                });
-                            } catch (e) {
-                                console.error('Erro ao marcar mensagem como lida:', e);
-                            }
-                        }, 10);
-                    }
-                }
-
                 if (change.type === 'added') {
+                    const raw = change.doc.data() || {};
+                    const messageId = change.doc.id;
+
+                    // Normaliza createdAt: converte Timestamp para Date ou usa createTime/fallback
+                    const createdAt = raw.createdAt?.toDate ? raw.createdAt.toDate() : (raw.createdAt || (change.doc.createTime ? change.doc.createTime.toDate() : new Date()));
+
+                    const message = {
+                        id: messageId,
+                        ...raw,
+                        createdAt
+                    };
+
+                    // Verificar se já existe (evitar duplicatas)
                     const existing = chatMessages.querySelector(`.message[data-id="${messageId}"]`);
                     if (!existing) {
                         const el = renderMessage(message, messageId, collectionName, true);
-                        if (el) chatMessages.appendChild(el);
+                        if (el) {
+                            chatMessages.appendChild(el);
+                            lazyLoadImages(el);
+                            
+                            // Scroll automático apenas se estiver perto do final
+                            const isNearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 100;
+                            if (isNearBottom) {
+                                smoothScrollToBottom(chatMessages, 200);
+                            }
+                        }
                     }
-                } else if (change.type === 'modified') {
-                    const existing = chatMessages.querySelector(`.message[data-id="${messageId}"]`);
-                    if (existing) {
-                        const newEl = renderMessage(message, messageId, collectionName, true);
-                        chatMessages.replaceChild(newEl, existing);
-                    }
-                } else if (change.type === 'removed') {
-                    const existing = chatMessages.querySelector(`.message[data-id="${messageId}"]`);
-                    if (existing) existing.remove();
                 }
             });
-
-            if (shouldStickToBottom || initialLoad) {
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-
-            initialLoad = false;
+        }, (error) => {
+            console.error('Erro no listener de mensagens:', error);
         });
+        
+    // Armazenar o handler para remover posteriormente se necessário
+    chatMessages._scrollHandler = scrollHandler;
+}
+
+function renderMessagesBatch(messages, collectionName) {
+    const fragment = document.createDocumentFragment();
+    
+    messages.forEach(message => {
+        const existing = chatMessages.querySelector(`.message[data-id="${message.id}"]`);
+        if (!existing) {
+            const el = renderMessage(message, message.id, collectionName, true);
+            if (el) {
+                fragment.appendChild(el);
+                lazyLoadImages(el);
+            }
+        }
+    });
+    
+    const loadingEl = chatMessages.querySelector('.loading-state');
+    if (loadingEl && chatMessages.children.length === 1) {
+        loadingEl.remove();
+    }
+    
+    if (fragment.children.length > 0) {
+        const firstChild = chatMessages.firstChild;
+        if (firstChild && firstChild.classList?.contains('loading-state')) {
+            chatMessages.insertBefore(fragment, firstChild.nextSibling);
+        } else {
+            chatMessages.prepend(fragment);
+        }
+    }
 }
 
 // ============================================================================
@@ -1214,6 +1564,9 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
     const isSent = message.senderEmail === currentUser.email;
     const messageEl = document.createElement('div');
     messageEl.className = `message ${isSent ? 'sent' : 'received'}`;
+    if (message.optimistic) {
+        messageEl.classList.add('message-optimistic');
+    }
     messageEl.dataset.id = messageId;
 
     let contentHTML = '';
@@ -1229,7 +1582,8 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
 
     if (message.type === 'image') {
         const filename = extractFilenameFromUrl(message.text, message.description, 'imagem', message.fileName);
-        contentHTML += `<img src="${message.text}" alt="Imagem" class="message-image" data-image-url="${message.text}" data-filename="${filename}">`;
+        // Usar data-src para lazy loading
+        contentHTML += `<img data-src="${message.text}" alt="Imagem" class="message-image lazy" data-image-url="${message.text}" data-filename="${filename}">`;
     } else if (message.type === 'video') {
         contentHTML += `<video src="${message.text}" controls></video>`;
     } else if (message.type === 'audio') {
@@ -1320,6 +1674,7 @@ function renderMessage(message, messageId, collectionName, returnElementOnly = f
     }
 
     chatMessages.appendChild(messageEl);
+    return messageEl;
 }
 
 function openMessageOptions(message, messageId, collectionName) {
@@ -1497,10 +1852,33 @@ document.getElementById('attach-doc').addEventListener('click', async () => {
 
 // Web Input Listeners
 if (fileUploadPhoto) {
-    fileUploadPhoto.addEventListener('change', (e) => handleWebFileUpload(e, 'media'));
+    fileUploadPhoto.addEventListener('change', async (e) => {
+        const files = e.target.files;
+        if (files.length > 0) {
+            let file = files[0];
+            
+            // Comprimir imagem se for muito grande
+            if (file.size > 1024 * 1024 && file.type.startsWith('image/')) { // > 1MB
+                showToast('Comprimindo imagem...', 'success');
+                file = await compressImage(file);
+            }
+            
+            const fileType = getResourceType(file.type) || 'image';
+            displayAttachmentPreview(file, fileType);
+        }
+        e.target.value = '';
+    });
 }
 if (fileUploadDoc) {
-    fileUploadDoc.addEventListener('change', (e) => handleWebFileUpload(e, 'file'));
+    fileUploadDoc.addEventListener('change', (e) => {
+        const files = e.target.files;
+        if (files.length > 0) {
+            const file = files[0];
+            const fileType = getResourceType(file.type) || 'file';
+            displayAttachmentPreview(file, fileType);
+        }
+        e.target.value = '';
+    });
 }
 
 // ============================================================================
@@ -1635,61 +2013,149 @@ function stopRecording(keepAudio) {
     btnRecord.innerHTML = '<i class="bi bi-mic-fill"></i>';
 }
 
+// ================== NOVA FUNÇÃO uploadAndSend COM WEB WORKER ==================
 async function uploadAndSend(file, type, text) {
-    const resourceType = getResourceType(file.type);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    formData.append('cloud_name', CLOUDINARY_CLOUD_NAME);
+    const collectionName = currentChatType === 'chat' ? 'chats' : 'groups';
+    
+    // Mensagem otimista para upload
+    const tempId = `temp_upload_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const optimisticMessage = {
+        id: tempId,
+        text: '[Enviando arquivo...]',
+        type: type,
+        senderEmail: currentUser.email,
+        senderName: currentUser.displayName || currentUser.email.split('@')[0],
+        createdAt: new Date(),
+        readBy: [],
+        optimistic: true,
+        description: text || (type === 'file' ? file.name : null)
+    };
+
+    const messageEl = renderMessage(optimisticMessage, tempId, collectionName, true);
+    if (messageEl) {
+        chatMessages.appendChild(messageEl);
+        lazyLoadImages(messageEl);
+        smoothScrollToBottom(chatMessages, 200);
+    }
 
     messageInput.disabled = true;
     btnSend.disabled = true;
 
-    try {
-        const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, {
-            method: 'POST',
-            body: formData
-        });
-        const data = await response.json();
-
-        if (data.secure_url) {
-            const collectionName = currentChatType === 'chat' ? 'chats' : 'groups';
-            const messageData = {
-                text: data.secure_url,
-                type: type,
-                fileName: file.name,
-                senderEmail: currentUser.email,
-                senderName: currentUser.displayName || currentUser.email.split('@')[0],
-                description: text || (type === 'file' ? file.name : null),
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                readBy: []
-            };
-
-            if (replyToMessage) {
-                messageData.replyTo = {
-                    senderName: replyToMessage.senderName,
-                    text: replyToMessage.text.substring(0, 100)
+    if (window.Worker) {
+        const worker = new Worker('worker.js');
+        
+        worker.onmessage = async (e) => {
+            if (e.data.success) {
+                const data = e.data.data;
+                
+                const messageData = {
+                    text: data.secure_url,
+                    type: type,
+                    fileName: file.name,
+                    senderEmail: currentUser.email,
+                    senderName: currentUser.displayName || currentUser.email.split('@')[0],
+                    description: text || (type === 'file' ? file.name : null),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    readBy: []
                 };
-                replyToMessage = null;
-                replyPreview.classList.remove('show');
+
+                if (replyToMessage) {
+                    messageData.replyTo = {
+                        senderName: replyToMessage.senderName,
+                        text: replyToMessage.text.substring(0, 100)
+                    };
+                    replyToMessage = null;
+                    replyPreview.classList.remove('show');
+                }
+
+                await db.collection(collectionName).doc(currentChatId).collection('messages').add(messageData);
+                
+                // Remover mensagem otimista
+                const tempEl = chatMessages.querySelector(`.message[data-id="${tempId}"]`);
+                if (tempEl) tempEl.remove();
+                
+                clearAttachmentPreview();
+                showToast(type === 'image' ? 'Imagem enviada' : 'Arquivo enviado');
+            } else {
+                showToast('Erro ao enviar arquivo', 'error');
+                // Marcar mensagem otimista como falha
+                const tempEl = chatMessages.querySelector(`.message[data-id="${tempId}"]`);
+                if (tempEl) {
+                    tempEl.classList.add('message-failed');
+                    tempEl.innerHTML += '<div class="message-error">Falha ao enviar. Toque para tentar novamente.</div>';
+                }
             }
+            
+            worker.terminate();
+            messageInput.disabled = false;
+            btnSend.disabled = false;
+        };
+        
+        worker.postMessage({ file, type, text });
+    } else {
+        // Fallback para navegadores sem suporte a Worker
+        try {
+            const resourceType = getResourceType(file.type);
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+            formData.append('cloud_name', CLOUDINARY_CLOUD_NAME);
 
-            await db.collection(collectionName).doc(currentChatId).collection('messages').add(messageData);
-            clearAttachmentPreview();
-            showToast('Arquivo enviado');
-        } else {
-            throw new Error('Upload failed');
+            const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.secure_url) {
+                const messageData = {
+                    text: data.secure_url,
+                    type: type,
+                    fileName: file.name,
+                    senderEmail: currentUser.email,
+                    senderName: currentUser.displayName || currentUser.email.split('@')[0],
+                    description: text || (type === 'file' ? file.name : null),
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    readBy: []
+                };
+
+                if (replyToMessage) {
+                    messageData.replyTo = {
+                        senderName: replyToMessage.senderName,
+                        text: replyToMessage.text.substring(0, 100)
+                    };
+                    replyToMessage = null;
+                    replyPreview.classList.remove('show');
+                }
+
+                await db.collection(collectionName).doc(currentChatId).collection('messages').add(messageData);
+                
+                // Remover mensagem otimista
+                const tempEl = chatMessages.querySelector(`.message[data-id="${tempId}"]`);
+                if (tempEl) tempEl.remove();
+                
+                clearAttachmentPreview();
+                showToast(type === 'image' ? 'Imagem enviada' : 'Arquivo enviado');
+            } else {
+                throw new Error('Upload failed');
+            }
+        } catch (e) {
+            showToast('Erro ao enviar arquivo', 'error');
+            console.error('Upload error:', e);
+            // Marcar mensagem otimista como falha
+            const tempEl = chatMessages.querySelector(`.message[data-id="${tempId}"]`);
+            if (tempEl) {
+                tempEl.classList.add('message-failed');
+                tempEl.innerHTML += '<div class="message-error">Falha ao enviar. Toque para tentar novamente.</div>';
+            }
         }
-    } catch (e) {
-        showToast('Erro ao enviar arquivo', 'error');
-        console.error('Upload error:', e);
-    }
 
-    messageInput.disabled = false;
-    btnSend.disabled = false;
-    messageInput.value = '';
+        messageInput.disabled = false;
+        btnSend.disabled = false;
+    }
 }
 
+// ================== NOVO EVENT LISTENER PARA messageForm COM OPTIMISTIC UI ==================
 if (messageForm) {
     messageForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1709,30 +2175,81 @@ if (messageForm) {
         if (!text) return;
 
         const collectionName = currentChatType === 'chat' ? 'chats' : 'groups';
-        const messageData = {
+        
+        // 1. OTIMISTIC UPDATE - Mostrar mensagem imediatamente
+        const tempId = `temp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const optimisticMessage = {
+            id: tempId,
             text: text,
             type: 'text',
             senderEmail: currentUser.email,
             senderName: currentUser.displayName || currentUser.email.split('@')[0],
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            readBy: []
+            createdAt: new Date(),
+            readBy: [],
+            optimistic: true
         };
 
-        if (replyToMessage) {
-            messageData.replyTo = {
-                senderName: replyToMessage.senderName || 'Mensagem',
-                text: replyToMessage.text.substring(0, 100)
-            };
-            replyToMessage = null;
-            replyPreview.classList.remove('show');
+        // Renderizar imediatamente
+        const messageEl = renderMessage(optimisticMessage, tempId, collectionName, true);
+        if (messageEl) {
+            chatMessages.appendChild(messageEl);
+            lazyLoadImages(messageEl);
+            smoothScrollToBottom(chatMessages, 200);
         }
 
-        try {
-            await db.collection(collectionName).doc(currentChatId).collection('messages').add(messageData);
-            messageInput.value = '';
-        } catch (e) {
-            showToast('Erro ao enviar mensagem', 'error');
-        }
+        // Limpar input imediatamente
+        messageInput.value = '';
+        messageInput.style.height = 'auto';
+        
+        // 2. ENVIO ASSÍNCRONO EM SEGUNDO PLANO
+        setTimeout(async () => {
+            try {
+                const messageData = {
+                    text: text,
+                    type: 'text',
+                    senderEmail: currentUser.email,
+                    senderName: optimisticMessage.senderName,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    readBy: []
+                };
+
+                if (replyToMessage) {
+                    messageData.replyTo = {
+                        senderName: replyToMessage.senderName || 'Mensagem',
+                        text: replyToMessage.text.substring(0, 100)
+                    };
+                    replyToMessage = null;
+                    replyPreview.classList.remove('show');
+                }
+
+                const docRef = await db.collection(collectionName)
+                    .doc(currentChatId)
+                    .collection('messages')
+                    .add(messageData);
+                
+                // Remover a mensagem otimista
+                const tempEl = chatMessages.querySelector(`.message[data-id="${tempId}"]`);
+                if (tempEl) {
+                    tempEl.remove();
+                }
+            } catch (e) {
+                console.error('Erro ao enviar:', e);
+                // Marcar mensagem otimista como falha
+                const tempEl = chatMessages.querySelector(`.message[data-id="${tempId}"]`);
+                if (tempEl) {
+                    tempEl.classList.add('message-failed');
+                    tempEl.innerHTML += '<div class="message-error">Falha ao enviar. Toque para tentar novamente.</div>';
+                    // Adicionar retry logic
+                    tempEl.addEventListener('click', () => {
+                        // Lógica de retry aqui
+                        tempEl.remove();
+                        messageInput.value = text;
+                        messageForm.dispatchEvent(new Event('submit'));
+                    });
+                }
+                showToast('Erro ao enviar mensagem', 'error');
+            }
+        }, 50); // Pequeno delay para melhor UX
     });
 }
 
@@ -1746,6 +2263,10 @@ if (btnBack) {
         document.querySelectorAll('.conversation-item').forEach(i => i.classList.remove('active'));
         if (unsubscribeFromMessages) unsubscribeFromMessages();
         if (unsubscribeFromPresence) unsubscribeFromPresence();
+        // Remover o listener de scroll
+        if (chatMessages._scrollHandler) {
+            chatMessages.removeEventListener('scroll', chatMessages._scrollHandler);
+        }
     });
 }
 
@@ -1890,14 +2411,13 @@ if (menuNewGroup) {
         } else {
             contactsContainer.innerHTML = '';
             for (const email of contacts) {
-                const contactDoc = await db.collection('users').doc(email).get();
-                if (contactDoc.exists) {
-                    const contact = contactDoc.data();
+                const contactData = await getCachedUserData(email);
+                if (contactData) {
                     contactsContainer.innerHTML += `
                         <div class="contact-list-item" data-email="${email}">
                             <input type="checkbox" id="member-${email}">
-                            <div class="avatar small">${getInitials(contact.name)}</div>
-                            <label for="member-${email}">${contact.name}</label>
+                            <div class="avatar small">${getCachedAvatar(email, contactData.name)}</div>
+                            <label for="member-${email}">${contactData.name}</label>
                         </div>
                     `;
                 }
@@ -1963,13 +2483,13 @@ if (confirmCreateGroup) {
 }
 
 if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
+    searchInput.addEventListener('input', debounce((e) => {
         const query = e.target.value.toLowerCase();
         document.querySelectorAll('.conversation-item').forEach(item => {
             const name = item.dataset.name.toLowerCase();
             item.style.display = name.includes(query) ? 'flex' : 'none';
         });
-    });
+    }, 300));
 }
 
 const userProfileBtn = document.getElementById('user-profile-btn');
@@ -1992,8 +2512,15 @@ if (avatarUpload) {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Comprimir imagem antes do upload
+        let processedFile = file;
+        if (file.size > 1024 * 1024 && file.type.startsWith('image/')) {
+            showToast('Comprimindo imagem...', 'success');
+            processedFile = await compressImage(file);
+        }
+
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', processedFile);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
 
         try {
@@ -2029,6 +2556,8 @@ document.querySelectorAll('.modal-overlay').forEach(modal => {
 
 const chatMenuInfo = document.getElementById('chat-menu-info');
 const chatMenuMedia = document.getElementById('chat-menu-media');
+const chatMenuBlock = document.getElementById('chat-menu-block');
+const chatMenuLeave = document.getElementById('chat-menu-leave');
 const chatMenuMute = null;
 const chatMenuClear = null;
 
@@ -2054,18 +2583,17 @@ if (chatMenuInfo) {
 
         if (currentChatType === 'chat' && currentChatPartnerEmail) {
             try {
-                const doc = await db.collection('users').doc(currentChatPartnerEmail).get();
-                if (doc.exists) {
-                    const data = doc.data();
-                    nameEl.textContent = data.name || currentChatPartnerEmail;
-                    statusEl.textContent = data.status || '';
-                    emailEl.textContent = data.email || currentChatPartnerEmail;
-                    lastSeenEl.textContent = formatLastSeen(data.lastSeen);
+                const contactData = await getCachedUserData(currentChatPartnerEmail);
+                if (contactData) {
+                    nameEl.textContent = contactData.name || currentChatPartnerEmail;
+                    statusEl.textContent = contactData.status || '';
+                    emailEl.textContent = contactData.email || currentChatPartnerEmail;
+                    lastSeenEl.textContent = formatLastSeen(contactData.lastSeen);
 
-                    if (data.photoURL) {
-                        avatarEl.innerHTML = `<img src="${data.photoURL}" alt="Avatar">`;
+                    if (contactData.photoURL) {
+                        avatarEl.innerHTML = `<img src="${contactData.photoURL}" alt="Avatar">`;
                     } else {
-                        avatarEl.innerHTML = getInitials(data.name || currentChatPartnerEmail);
+                        avatarEl.innerHTML = getCachedAvatar(currentChatPartnerEmail, contactData.name);
                     }
                 }
                 if (typeRow && membersContainer) {
@@ -2084,7 +2612,7 @@ if (chatMenuInfo) {
                     statusEl.textContent = `Admin: ${data.admin || ''}`;
                     emailEl.textContent = '-';
                     lastSeenEl.textContent = '';
-                    avatarEl.innerHTML = getInitials(data.name || 'Grupo');
+                    avatarEl.innerHTML = getCachedAvatar(null, data.name || 'Grupo');
 
                     if (typeRow && typeText) {
                         typeRow.style.display = 'flex';
@@ -2095,12 +2623,11 @@ if (chatMenuInfo) {
                         membersContainer.style.display = 'block';
                         membersList.innerHTML = '';
                         for (const email of data.members || []) {
-                            const userDoc = await db.collection('users').doc(email).get();
-                            const userData = userDoc.data() || {};
-                            const displayName = userData.name || email;
+                            const contactData = await getCachedUserData(email);
+                            const displayName = contactData?.name || email;
                             membersList.innerHTML += `
                                 <div class="contact-list-item">
-                                    <div class="avatar small">${getInitials(displayName)}</div>
+                                    <div class="avatar small">${getCachedAvatar(email, displayName)}</div>
                                     <div>${displayName}<br><span style="font-size: 12px; color: var(--text-muted);">${email}</span></div>
                                 </div>
                             `;
@@ -2242,6 +2769,75 @@ if (chatMenuMedia) {
     });
 }
 
+if (chatMenuBlock) {
+    chatMenuBlock.addEventListener('click', async () => {
+        if (!currentChatId || currentChatType !== 'chat' || !currentChatPartnerEmail) {
+            showToast('Bloquear só está disponível para conversas individuais', 'error');
+            return;
+        }
+        if (chatMenu) chatMenu.classList.remove('show');
+
+        if (!confirm('Deseja bloquear este contato? Você não receberá mais mensagens dele.')) return;
+
+        try {
+            await db.collection('users').doc(currentUser.email).set({
+                blocked: firebase.firestore.FieldValue.arrayUnion(currentChatPartnerEmail)
+            }, { merge: true });
+
+            // Remove UI e volta para a lista de conversas
+            const item = conversationList.querySelector(`.conversation-item[data-email="${currentChatPartnerEmail}"]`);
+            if (item) item.remove();
+
+            // Fecha a conversa aberta
+            currentChatId = null;
+            currentChatPartnerEmail = null;
+            currentChatType = null;
+            if (chatContainer) chatContainer.style.display = 'none';
+            if (welcomeScreen) welcomeScreen.style.display = 'flex';
+
+            showToast('Contato bloqueado');
+            loadConversations();
+        } catch (e) {
+            console.error('Erro ao bloquear contato:', e);
+            showToast('Erro ao bloquear contato', 'error');
+        }
+    });
+}
+
+if (chatMenuLeave) {
+    chatMenuLeave.addEventListener('click', async () => {
+        if (!currentChatId || currentChatType !== 'group') {
+            showToast('Sair do grupo só está disponível em grupos', 'error');
+            return;
+        }
+        if (chatMenu) chatMenu.classList.remove('show');
+
+        if (!confirm('Tem certeza que deseja sair deste grupo?')) return;
+
+        try {
+            // Remove o usuário da lista de membros
+            await db.collection('groups').doc(currentChatId).update({
+                members: firebase.firestore.FieldValue.arrayRemove(currentUser.email)
+            });
+
+            // Fecha a conversa e atualiza lista
+            if (unsubscribeFromMessages) unsubscribeFromMessages();
+            if (unsubscribeFromPresence) unsubscribeFromPresence();
+            currentChatId = null;
+            currentChatPartnerEmail = null;
+            currentChatType = null;
+            if (chatContainer) chatContainer.style.display = 'none';
+            if (welcomeScreen) welcomeScreen.style.display = 'flex';
+
+            showToast('Você saiu do grupo');
+            loadConversations();
+        } catch (e) {
+            console.error('Erro ao sair do grupo:', e);
+            showToast('Erro ao sair do grupo', 'error');
+        }
+    });
+}
+
 if (chatMenuMute) {
     chatMenuMute.addEventListener('click', () => {
         if (!currentChatId) {
@@ -2311,10 +2907,9 @@ if (settingsProfileEdit) {
         if (!nameInput || !emailInput || !errorEl) return;
 
         try {
-            const doc = await db.collection('users').doc(currentUser.email).get();
-            const data = doc.data() || {};
-            nameInput.value = data.name || currentUser.displayName || '';
-            emailInput.value = currentUser.email || data.email || '';
+            const userData = await getCachedUserData(currentUser.email);
+            nameInput.value = userData?.name || currentUser.displayName || '';
+            emailInput.value = currentUser.email || '';
             const passInput = document.getElementById('profile-password-input');
             if (passInput) passInput.value = '';
             errorEl.classList.remove('show');
@@ -2371,6 +2966,13 @@ if (saveProfileEdit) {
                 email: currentUser.email
             });
 
+            // Atualizar cache
+            const cachedData = userCache.get(currentUser.email);
+            if (cachedData) {
+                cachedData.name = name;
+                userCache.set(currentUser.email, cachedData);
+            }
+
             if (userName) userName.textContent = name;
             const settingsName = document.getElementById('settings-name');
             const settingsEmail = document.getElementById('settings-email');
@@ -2378,7 +2980,7 @@ if (saveProfileEdit) {
             if (settingsEmail) settingsEmail.textContent = currentUser.email;
 
             if (!userAvatar.querySelector('img')) {
-                userAvatar.textContent = getInitials(name);
+                userAvatar.textContent = getCachedAvatar(currentUser.email, name);
             }
 
             showToast('Dados da conta atualizados');
@@ -2460,8 +3062,6 @@ if (messageInput) {
             e.preventDefault();
             // Dispara o evento de submit do form ou clica no botão enviar
             if (messageForm) {
-                // Dispara evento de submit manualmente ou extrai a logica
-                // Como o listener é no submit do form, vamos achar o botão e clicar ou disparar evento error-proof
                 const event = new Event('submit', { cancelable: true });
                 messageForm.dispatchEvent(event);
             }
